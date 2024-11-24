@@ -1,5 +1,8 @@
 fn main() {
-    let recipe = std::fs::read_to_string("recipes/module.md").unwrap();
+    let recipe = format!(
+        "\n{}",
+        std::fs::read_to_string("recipes/module.md").unwrap()
+    );
     println!("{:?}", std::env::current_dir());
     println!("{:?}", recipe);
     let parser = recipe::parser::Tokenizer::from_str(&recipe);

@@ -23,11 +23,11 @@ pub struct Heading<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct CodeBlock<'a> {
-    executor: Option<&'a str>,
-    name: Option<&'a str>,
-    type_hint: Option<&'a str>,
-    annotations: Vec<&'a str>,
-    code: &'a str,
+    pub executor: Option<Span<'a>>,
+    pub name: Option<Span<'a>>,
+    pub type_hint: Option<Span<'a>>,
+    pub annotations: Vec<Span<'a>>,
+    pub code: Span<'a>,
 }
 
 impl<'a> TryFrom<Token<'a>> for CodeBlock<'a> {
@@ -412,18 +412,18 @@ fn parse_code_block(inp: Span) -> IResult<Span, CodeBlock> {
     let (inp, executor) = valid_name(inp)?;
     let (inp, name) = preceded(space1, valid_name)(inp)?;
     let (mut inp, type_hint) = preceded(space0, delimited(tag("("), valid_name, tag(")")))(inp)?;
-    let mut annotations: Vec<&str> = Vec::new();
+    let mut annotations = Vec::new();
     while let Ok((inp_ok, annotation)) = preceded(space1, valid_name)(inp) {
-        annotations.push(&annotation);
+        annotations.push(annotation);
         inp = inp_ok;
     }
     let (code, _) = preceded(space0, line_ending)(inp)?;
     let codeblock = CodeBlock {
-        executor: none_if_empty(&executor),
-        name: none_if_empty(&name),
-        type_hint: none_if_empty(&type_hint),
+        executor: none_if_empty(executor),
+        name: none_if_empty(name),
+        type_hint: none_if_empty(type_hint),
         annotations,
-        code: &code,
+        code: code,
     };
     let (rest, _) = take_while(|_| true)(code)?;
     Ok((rest, codeblock))
@@ -536,7 +536,7 @@ where
     }
 }
 
-fn none_if_empty(s: &str) -> Option<&str> {
+fn none_if_empty(s: Span) -> Option<Span> {
     if s.len() > 0 {
         Some(s)
     } else {
@@ -559,6 +559,31 @@ mod tests {
                 end: "".into(),
                 inner: self,
             }
+        }
+    }
+
+    fn same_fragment(a: Span, b: Span) -> bool {
+        *a.fragment() == *b.fragment()
+    }
+
+    fn same_opt_fragment(a: Option<Span>, b: Option<Span>) -> bool {
+        a.map(|s| *s.fragment()) == b.map(|s| *s.fragment())
+    }
+
+    impl<'a> CodeBlock<'a> {
+        fn eq_by_value(&self, other: &CodeBlock) -> bool {
+            if self.annotations.len() != other.annotations.len() {
+                return false;
+            }
+            for i in 0..self.annotations.len() {
+                if !same_fragment(self.annotations[i], other.annotations[i]) {
+                    return false;
+                }
+            }
+            same_fragment(self.code, other.code)
+                && same_opt_fragment(self.name, other.name)
+                && same_opt_fragment(self.executor, other.executor)
+                && same_opt_fragment(self.type_hint, other.type_hint)
         }
     }
 
@@ -664,11 +689,11 @@ mod tests {
 echo "I am a {{ banana }}"
 "#;
         let final_block = CodeBlock {
-            executor: Some("sh"),
-            name: Some("foo_bar"),
-            type_hint: Some("object"),
-            annotations: vec!["annot1", "annot2"],
-            code: "echo \"I am a {{ banana }}\"\n",
+            executor: Some("sh".into()),
+            name: Some("foo_bar".into()),
+            type_hint: Some("object".into()),
+            annotations: vec!["annot1".into(), "annot2".into()],
+            code: "echo \"I am a {{ banana }}\"\n".into(),
         };
 
         let from_token: CodeBlock = TokenType::Block(undertest.into())
@@ -677,13 +702,13 @@ echo "I am a {{ banana }}"
             .unwrap();
 
         let (_, parsed) = parse_code_block(undertest.into()).unwrap();
-        assert_eq!(parsed, final_block);
-        assert_eq!(from_token, final_block);
+        assert!(parsed.eq_by_value(&final_block));
+        assert!(from_token.eq_by_value(&final_block));
     }
 
     #[test]
     fn test_parse_heading() {
-        let undertest = "#### \t How To Bake a Cake\t  \r\nand live to tell the tale";
+        let undertest = "\n#### \t How To Bake a Cake\t  \r\nand live to tell the tale";
         let expected = TokenType::Heading(Heading {
             level: 4,
             text: "How To Bake a Cake",
