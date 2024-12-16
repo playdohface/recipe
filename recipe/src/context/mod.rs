@@ -113,7 +113,7 @@ pub enum AppState {
 }
 
 #[derive(Debug)]
-/// Represents a single loaded
+/// Represents a single loaded command
 pub enum Command<'a> {
     Composite(Vec<Command<'a>>),
     CodeBlock(CodeBlock<'a>),

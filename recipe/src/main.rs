@@ -5,7 +5,7 @@ fn main() {
     );
     println!("{:?}", std::env::current_dir());
     println!("{:?}", recipe);
-    let parser = recipe::parser::Tokenizer::from_str(&recipe);
+    let parser = recipe::parser::tokenizer::Tokenizer::from_str(&recipe);
     for token in parser {
         println!("{:?}", token.inner());
     }
