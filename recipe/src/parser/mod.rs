@@ -71,7 +71,22 @@ impl<'a> TryFrom<&TokenType<'a>> for Value<'a> {
     type Error = ParseError<'a>;
 
     fn try_from(value: &TokenType<'a>) -> Result<Self, ParseError<'a>> {
-        todo!()
+        match *value {
+            TokenType::Inline(src) => {
+                if let Ok((_, val)) = parse_selection_path(src) {
+                    Ok(Value::ContextRef(val))
+                } else if let Ok(val) = json5::from_str(src) {
+                    Ok(Value::Literal(val))
+                } else {
+                    Err(ParseError::InvalidValue(src))
+                }
+            }
+            TokenType::Block(src) => match json5::from_str(src) {
+                Ok(val) => Ok(Value::Literal(val)),
+                Err(e) => Err(ParseError::InvalidLiteral((src, e))),
+            },
+            _ => Err(ParseError::InvalidTokenTypeForValue(value.clone())),
+        }
     }
 }
 
@@ -129,7 +144,8 @@ fn parse_set_directive<'a>(inp: &'a [Token]) -> IResult<&'a [Token<'a>], SetDire
                 return fail(inp);
             };
             if let Ok(value) = value {
-                Ok((&inp[i..], SetDirective { variable, value }))
+                let rest = if inp.len() >= i { &inp[i + 1..] } else { &[] };
+                Ok((rest, SetDirective { variable, value }))
             } else {
                 fail(inp)
             }
@@ -143,54 +159,11 @@ fn is_allowed_in_ident(c: char) -> bool {
 }
 
 fn is_allowed_in_name(c: char) -> bool {
-    is_allowed_in_ident(c) && !['(', ')', '.', '[', ']', '{', '}'].contains(&c)
-}
-
-fn is_allowed_in_link_text(c: char) -> bool {
-    c != ']' && !is_line_end(c)
-}
-
-fn is_allowed_in_link_path(c: char) -> bool {
-    c != ')' && !is_line_end(c)
-}
-
-fn is_line_end(c: char) -> bool {
-    c == '\n' || c == '\r'
+    is_allowed_in_ident(c) && !['(', ')', '.', '[', ']', '{', '}', '\'', '"'].contains(&c)
 }
 
 fn ends_literal(c: char) -> bool {
     c == '`'
-}
-
-/// Parses a value per the [JSON5-spec](https://spec.json5.org/) (i.e. the json5 crate for now)
-fn parse_multiline_literal_inner(inp: Span) -> IResult<Span, serde_json::Value> {
-    let (rest, src) = take_till(ends_literal)(inp)?;
-    if let Ok(val) = json5::from_str::<serde_json::Value>(*src) {
-        return Ok((rest, val));
-    } else {
-        fail(inp)
-    }
-}
-
-fn parse_inline_literal_inner(inp: Span) -> IResult<Span, serde_json::Value> {
-    let (rest, src) = take_while(|c| !ends_literal(c) && !is_line_end(c))(inp)?;
-    if let Ok(val) = json5::from_str::<serde_json::Value>(*src) {
-        return Ok((rest, val));
-    } else {
-        fail(inp)
-    }
-}
-
-fn parse_multiline_literal(inp: Span) -> IResult<Span, serde_json::Value> {
-    delimited(
-        parse_multiline_literal_start,
-        parse_multiline_literal_inner,
-        tag("```"),
-    )(inp)
-}
-
-fn parse_inline_literal(inp: Span) -> IResult<Span, serde_json::Value> {
-    delimited(tag("`"), parse_inline_literal_inner, tag("`"))(inp)
 }
 
 fn parse_multiline_literal_start(inp: Span) -> IResult<Span, Span> {
@@ -199,40 +172,6 @@ fn parse_multiline_literal_start(inp: Span) -> IResult<Span, Span> {
         alt((space1, line_ending)),
     )(inp)
 }
-
-// /// By value we mean the right hand side of an assignment
-// fn parse_value(inp: Span) -> IResult<Span, Value> {
-//     if let Ok((inp, select)) = delimited(tag("`"), parse_selection_path, tag("`"))(inp) {
-//         return Ok((inp, Value::ContextRef(select)));
-//     }
-//     if let Ok((inp, value)) = delimited(
-//         tag::<_, _, VerboseError<_>>("`"),
-//         take_while1(|c| !is_line_end(c)),
-//         tag("`"),
-//     )(inp)
-//     {
-//         if let Ok((_, value)) = parse_multiline_literal_inner(inp) {
-//             return Ok((inp, Value::Literal(value)));
-//         } else {
-//             return fail(inp);
-//         }
-//     }
-//     let valid_multiline_literal_start = alt((
-//         terminated(tag("```"), alt((space1, line_ending))),
-//         tag("```json"),
-//         tag("```json5"),
-//     ));
-//     if let Ok((inp, value)) = delimited(
-//         valid_multiline_literal_start,
-//         parse_multiline_literal_inner,
-//         tag("```"),
-//     )(inp)
-//     {
-//         return Ok((inp, Value::Literal(value)));
-//     } else {
-//         return fail(inp);
-//     }
-// }
 
 fn parse_selection_path(inp: &str) -> IResult<&str, Vec<Selection>> {
     let (mut inp, first) = valid_name(inp)?;
@@ -336,78 +275,7 @@ fn valid_name<'a>(inp: &'a str) -> IResult<&'a str, &'a str> {
     verify(take_while1(is_allowed_in_name), is_valid_name)(inp)
 }
 
-/// Eat input until the parser succeeds
-fn find_next<I, O, F>(mut f: F) -> impl FnMut(I) -> IResult<I, O>
-where
-    F: FnMut(I) -> IResult<I, O>,
-    I: Clone + InputLength + Slice<RangeFrom<usize>>,
-{
-    move |mut inp: I| {
-        while inp.input_len() > 0 {
-            if let Ok(found) = f.parse(inp.clone()) {
-                return Ok(found);
-            } else {
-                inp = inp.slice(1..);
-            }
-        }
-        fail(inp)
-    }
-}
 
-/// Greedily collect matches for the first parser, discarding anything that does not match until the second parser succeeds
-/// Returns Err if the second parser does not succeed before EOF
-fn find_many_till<I, O, P>(
-    mut f: impl FnMut(I) -> IResult<I, O>,
-    mut g: impl FnMut(I) -> IResult<I, P>,
-    inp: I,
-) -> IResult<I, (Vec<O>, P)>
-where
-    I: Clone + InputTake + InputLength + InputIter,
-{
-    let mut all_found = Vec::new();
-    let mut inp = inp;
-    loop {
-        match g(inp.clone()) {
-            Err(_) => {
-                if let Ok((rest, found)) = f(inp.clone()) {
-                    all_found.push(found);
-                    inp = rest;
-                } else {
-                    let (rest, _) = take(1usize)(inp)?;
-                    inp = rest;
-                }
-            }
-            Ok((rest, second_parser_match)) => return Ok((rest, (all_found, second_parser_match))),
-        }
-    }
-}
-
-/// finds all non-overlapping matches for a given parser until the input is exhausted
-fn _find_all<I, O, E, F>(mut pat: F) -> impl FnMut(I) -> IResult<I, Vec<O>, E>
-where
-    I: InputIter + InputTake + Clone + InputLength + Slice<RangeFrom<usize>>,
-    F: Parser<I, O, E>,
-    E: nom::error::ParseError<I>,
-{
-    move |mut i: I| {
-        let mut all_found = Vec::new();
-        loop {
-            match pat.parse(i.clone()) {
-                Ok((rest, found)) => {
-                    i = rest;
-                    all_found.push(found);
-                }
-                Err(_) => {
-                    if i.input_len() > 0 {
-                        i = i.slice(1..);
-                    } else {
-                        return Ok((i, all_found));
-                    }
-                }
-            }
-        }
-    }
-}
 
 fn none_if_empty(s: Span) -> Option<Span> {
     if s.len() > 0 {
@@ -458,22 +326,22 @@ mod tests {
     }
 
     #[test]
-    fn test_find_all() {
-        let src = "needle fskjnfonwofinwfeneedlekfsdond;nsdf;ondsfneedlefsmfok";
-        let (rest, found) = _find_all(tag::<&str, &str, ()>("needle"))(src).unwrap();
-        assert_eq!(found, vec!["needle", "needle", "needle"]);
-        assert_eq!(rest, "");
-    }
-
-    #[test]
-    fn test_find_many_till() {
-        let src = "abcdefsba bababaaaaabbbbbabababab";
-        let (rest, (found, end)) =
-            find_many_till(alt((tag("a"), tag("b"))), tag("baba"), src).unwrap();
-        assert_eq!(found, vec!["a", "b", "b", "a"]);
-        assert_eq!(end, "baba");
-        assert_eq!(rest, "baaaaabbbbbabababab");
-        assert!(find_many_till(tag("a"), tag("b"), "aaaaaaaacccccc").is_err());
+    fn test_parse_set_directive() {
+        let src = vec![
+            TokenType::Keyword(Keyword::Set).mock_token(),
+            TokenType::Inline("foo.bar").mock_token(),
+            TokenType::Inline("'baz'").mock_token(),
+        ];
+        let (rest, parsed) = parse_set_directive(&src).unwrap();
+        assert_eq!(
+            parsed.variable,
+            vec![Selection::Key("foo"), Selection::Key("bar")]
+        );
+        assert_eq!(
+            parsed.value,
+            Value::Literal(serde_json::Value::String("baz".into()))
+        );
+        assert_eq!(rest.len(), 0);
     }
 
     #[test]

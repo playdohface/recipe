@@ -1,9 +1,19 @@
-use super::{Span, Token};
+use nom::error::VerboseError;
+
+use super::{Span, Token, TokenType};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
     Generic(Span<'a>),
     InvalidToken(Token<'a>),
     InvalidCodeBlock(Span<'a>),
+
+    // Errors converting to a value
+    InvalidValue(&'a str),
+    InvalidLiteral((&'a str, json5::Error)),
+    InvalidTokenTypeForValue(TokenType<'a>),
+
+    InvalidSelection(nom::Err<nom::error::Error<&'a str>>),
+
     NomError(nom::error::VerboseError<Span<'a>>),
 }

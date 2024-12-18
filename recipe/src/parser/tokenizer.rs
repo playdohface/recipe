@@ -1,5 +1,7 @@
 use std::ops::RangeFrom;
 
+use anyhow::anyhow;
+use convert_case::{Case, Casing};
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_till, take_while},
@@ -11,19 +13,39 @@ use nom::{
 };
 use nom_locate::position;
 
-use super::{
-    is_allowed_in_link_path, is_allowed_in_link_text, is_line_end, Heading, Keyword, Link, Span,
-    Token, TokenType,
-};
+use crate::files;
+
+use super::{Heading, Keyword, Link, Span, Token, TokenType};
 
 #[derive(Debug)]
 pub struct Tokenizer<'a> {
     src: Span<'a>,
+    scope: usize,
 }
 
 impl<'a> Tokenizer<'a> {
     pub fn from_str(src: &'a str) -> Self {
-        Tokenizer { src: src.into() }
+        Tokenizer {
+            src: src.into(),
+            scope: 0,
+        }
+    }
+    /// Only return the Tokens found inside a given heading
+    /// The heading-slug is the kebab-case version of the heading text
+    fn scope_to_heading(&mut self, heading_slug: &str) {
+        loop {
+            match self.next() {
+                Some(Token {
+                    inner: TokenType::Heading(Heading { text, level, .. }),
+                    ..
+                }) if text.to_case(Case::Kebab) == heading_slug => {
+                    self.scope = level;
+                    break;
+                }
+                Some(_) => continue,
+                None => break,
+            }
+        }
     }
 }
 impl<'a> Iterator for Tokenizer<'a> {
@@ -31,8 +53,15 @@ impl<'a> Iterator for Tokenizer<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Ok((rest, found)) = find_next(any_token)(self.src) {
-            self.src = rest;
-            Some(found)
+            match found.inner {
+                TokenType::Heading(Heading { level, .. }) if level <= self.scope => {
+                    return None;
+                }
+                _ => {
+                    self.src = rest;
+                    Some(found)
+                }
+            }
         } else {
             None
         }
@@ -138,6 +167,18 @@ fn parse_link(inp: Span) -> IResult<Span, Token> {
     ))
 }
 
+fn is_allowed_in_link_text(c: char) -> bool {
+    c != ']' && !is_line_end(c)
+}
+
+fn is_allowed_in_link_path(c: char) -> bool {
+    c != ')' && !is_line_end(c)
+}
+
+fn is_line_end(c: char) -> bool {
+    c == '\n' || c == '\r'
+}
+
 fn parse_keyword(inp: Span) -> IResult<Span, Token> {
     let (rest, res) = terminated(
         alt((
@@ -181,6 +222,34 @@ mod tests {
     use nom_locate::LocatedSpan;
 
     use super::*;
+
+    #[test]
+    fn test_scope_to_heading() {
+        let src = r#"
+# Heading 1
+`inside heading 1`
+## Heading 2 please ScopeMe-to_ThisHeading
+`inside heading 2`
+### Heading 3
+`inside heading 3`
+## Another heading
+`inside another heading`
+"#;
+        let mut tokenizer = Tokenizer::from_str(src);
+        tokenizer.scope_to_heading("heading-2-please-scope-me-to-this-heading");
+        let tokens: Vec<TokenType> = tokenizer.map(|t| t.inner).collect();
+        assert_eq!(
+            tokens,
+            vec![
+                TokenType::Inline("inside heading 2"),
+                TokenType::Heading(Heading {
+                    level: 3,
+                    text: "Heading 3"
+                }),
+                TokenType::Inline("inside heading 3"),
+            ]
+        );
+    }
 
     #[test]
     fn test_tokenizer() {
