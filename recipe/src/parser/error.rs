@@ -6,7 +6,7 @@ use super::{Span, Token, TokenType};
 pub enum ParseError<'a> {
     Generic(Span<'a>),
     InvalidToken(Token<'a>),
-    InvalidCodeBlock(Span<'a>),
+    InvalidCodeBlock(&'a str),
 
     // Errors converting to a value
     InvalidValue(&'a str),

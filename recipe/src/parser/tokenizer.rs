@@ -13,19 +13,21 @@ use nom::{
 };
 use nom_locate::position;
 
-use crate::files;
+use crate::loader;
 
 use super::{Heading, Keyword, Link, Span, Token, TokenType};
 
 #[derive(Debug)]
 pub struct Tokenizer<'a> {
+    path: &'a str,
     src: Span<'a>,
     scope: usize,
 }
 
 impl<'a> Tokenizer<'a> {
-    pub fn from_str(src: &'a str) -> Self {
+    pub fn from_str(src: &'a str, path: &'a str) -> Self {
         Tokenizer {
+            path,
             src: src.into(),
             scope: 0,
         }
@@ -235,7 +237,7 @@ mod tests {
 ## Another heading
 `inside another heading`
 "#;
-        let mut tokenizer = Tokenizer::from_str(src);
+        let mut tokenizer = Tokenizer::from_str(src, "Mock.md");
         tokenizer.scope_to_heading("heading-2-please-scope-me-to-this-heading");
         let tokens: Vec<TokenType> = tokenizer.map(|t| t.inner).collect();
         assert_eq!(
@@ -266,7 +268,7 @@ Some more text
 [Link](https://example.com)
 Set `foo` to `bar`
 "#;
-        let tokenizer = Tokenizer::from_str(src);
+        let tokenizer = Tokenizer::from_str(src, "Mock.md");
         let tokens: Vec<TokenType> = tokenizer.map(|t| t.inner).collect();
         assert_eq!(
             tokens,

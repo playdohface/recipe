@@ -18,7 +18,7 @@ trait Template {
 
 impl<'a> Template for CodeBlock<'a> {
     fn template(&self) -> &str {
-        self.code.fragment()
+        self.code
     }
 }
 
@@ -27,7 +27,34 @@ impl<'a> Template for CodeBlock<'a> {
 pub struct AppContext<'a> {
     commands: Commands<'a>,
     ctx: Context,
-    state: AppState,
+}
+impl<'a> AppContext<'a> {
+    pub fn new() -> Self {
+        AppContext {
+            commands: Commands {
+                inner: BTreeMap::new(),
+            },
+            ctx: Context {
+                root: HashMap::new(),
+                executors: Executors::default(),
+            },
+        }
+    }
+    pub fn execute(&mut self) -> Result<(), error::ExecutionError> {
+        for (_, command) in self.commands.inner.iter() {
+            command.execute(&mut self.ctx)?;
+        }
+        Ok(())
+    }
+    pub fn register_command(&mut self, name: &'a str, command: Command<'a>) {
+        self.commands.inner.insert(name.to_owned(), command);
+    }
+    pub fn register_variable(&mut self, name: &str, value: Value) {
+        self.ctx.root.insert(name.to_owned(), value);
+    }
+    pub fn register_executor(&mut self, name: &str, executor: Executor) {
+        self.ctx.executors.inner.insert(name.to_owned(), executor);
+    }
 }
 
 /// Wraps all the loaded Commands
@@ -40,12 +67,14 @@ pub struct Commands<'a> {
 pub struct Executors {
     inner: HashMap<String, Executor>,
 }
-impl Executors {
-    fn new() -> Self {
+impl Default for Executors {
+    fn default() -> Self {
         let mut inner = HashMap::new();
         inner.insert("sh".to_owned(), Executor::shell());
         Executors { inner }
     }
+}
+impl Executors {
     fn run(&self, name: &str, code: String) -> Result<Output, ExecutionError> {
         if let Some(exec) = self.inner.get(name) {
             exec.run(code)
@@ -105,12 +134,6 @@ impl Context {
         self.root.insert("status".to_owned(), statuscode);
     }
 }
-#[derive(Debug)]
-pub enum AppState {
-    New,
-    Ready,
-    Error,
-}
 
 #[derive(Debug)]
 /// Represents a single loaded command
@@ -130,18 +153,15 @@ impl<'a> Command<'a> {
                 Ok(())
             }
             Self::CodeBlock(codeblock) => {
-                let executor = *codeblock
-                    .executor
-                    .ok_or(ExecutionError::MissingExecutor)?
-                    .fragment();
-                let template = *codeblock.code.fragment();
+                let executor = codeblock.executor.ok_or(ExecutionError::MissingExecutor)?;
+                let template = codeblock.code;
                 //TODO we may not want to construct this every time...
                 let handlebars = Handlebars::new();
                 let code = handlebars
                     .render_template(template, &ctx.root)
                     .map_err(|e| ExecutionError::TemplateError)?;
                 let output = ctx.executors.run(executor, code)?;
-                ctx.register_execution(output, codeblock.type_hint.map(|t| *t.fragment()));
+                ctx.register_execution(output, codeblock.type_hint);
                 Ok(())
             }
         }
@@ -168,7 +188,7 @@ mod tests {
         let command = Command::CodeBlock(codeblock);
         let mut context = Context {
             root: HashMap::new(),
-            executors: Executors::new(),
+            executors: Executors::default(),
         };
         let res = command.execute(&mut context);
         assert!(res.is_ok());
@@ -197,7 +217,7 @@ mod tests {
         });
         let mut context = Context {
             root: HashMap::new(),
-            executors: Executors::new(),
+            executors: Executors::default(),
         };
         let res = command.execute(&mut context);
         dbg!(context);

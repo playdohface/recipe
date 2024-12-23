@@ -1,5 +1,9 @@
-use std::ops::RangeFrom;
+use std::{
+    collections::{HashMap, HashSet},
+    ops::RangeFrom,
+};
 
+use anyhow::anyhow;
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take, take_till, take_until, take_while, take_while1},
@@ -14,6 +18,9 @@ use nom_locate::{position, LocatedSpan};
 mod error;
 pub mod tokenizer;
 use error::ParseError;
+use tokenizer::Tokenizer;
+
+use crate::loader;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,30 +31,30 @@ pub struct Heading<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodeBlock<'a> {
-    pub executor: Option<Span<'a>>,
-    pub name: Option<Span<'a>>,
-    pub type_hint: Option<Span<'a>>,
-    pub annotations: Vec<Span<'a>>,
-    pub code: Span<'a>,
+    pub executor: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub type_hint: Option<&'a str>,
+    pub annotations: Vec<&'a str>,
+    pub code: &'a str,
 }
 
-// impl<'a> TryFrom<Token<'a>> for CodeBlock<'a> {
-//     type Error = ParseError<'a>;
+impl<'a> TryFrom<Token<'a>> for CodeBlock<'a> {
+    type Error = ParseError<'a>;
 
-//     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-//         match value.inner {
-//             TokenType::Block(src) => parse_code_block(src)
-//                 .map(|(_, res)| res)
-//                 .map_err(|_| ParseError::InvalidCodeBlock(src)),
-//             _ => Err(ParseError::InvalidToken(value)),
-//         }
-//     }
-// }
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value.inner {
+            TokenType::Block(src) => parse_code_block(src)
+                .map(|(_, res)| res)
+                .map_err(|_| ParseError::InvalidCodeBlock(src)),
+            _ => Err(ParseError::InvalidToken(value)),
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link<'a> {
     text: &'a str,
-    path: &'a str,
+    pub path: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -123,6 +130,32 @@ pub enum TokenType<'a> {
     Link(Link<'a>),
     Keyword(Keyword),
     Newline,
+}
+
+pub struct Tokens<'a> {
+    tokens: Vec<Tokenizer<'a>>,
+}
+impl<'a> Tokens<'a> {
+    pub fn new() -> Self {
+        Self { tokens: Vec::new() }
+    }
+    pub fn push(&mut self, tokenizer: Tokenizer<'a>) {
+        self.tokens.push(tokenizer);
+    }
+}
+impl<'a> Iterator for Tokens<'a> {
+    type Item = Token<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(tokenizer) = self.tokens.last_mut() {
+            if let Some(token) = tokenizer.next() {
+                return Some(token);
+            } else {
+                self.tokens.pop();
+            }
+        }
+        None
+    }
 }
 
 fn parse_set_directive<'a>(inp: &'a [Token]) -> IResult<&'a [Token<'a>], SetDirective<'a>> {
@@ -235,33 +268,33 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
 //     ))
 // }
 
-// /// Parse the inner portion of a code-block
-// /// always consumes the entire input
-// /// The first word, not preceded by whitespace, is the executor
-// /// the next word, or first word preceded by whitespace is the name
-// /// the next word, if it is in parenthesis, is the type-hint
-// /// all following words until newline are annotations
-// /// everything after (but not including) the first newline is the code
-// fn parse_code_block(inp: Span) -> IResult<Span, CodeBlock> {
-//     let (inp, executor) = valid_name(inp)?;
-//     let (inp, name) = preceded(space1, valid_name)(inp)?;
-//     let (mut inp, type_hint) = preceded(space0, delimited(tag("("), valid_name, tag(")")))(inp)?;
-//     let mut annotations = Vec::new();
-//     while let Ok((inp_ok, annotation)) = preceded(space1, valid_name)(inp) {
-//         annotations.push(annotation);
-//         inp = inp_ok;
-//     }
-//     let (code, _) = preceded(space0, line_ending)(inp)?;
-//     let codeblock = CodeBlock {
-//         executor: none_if_empty(executor),
-//         name: none_if_empty(name),
-//         type_hint: none_if_empty(type_hint),
-//         annotations,
-//         code: code,
-//     };
-//     let (rest, _) = take_while(|_| true)(code)?;
-//     Ok((rest, codeblock))
-// }
+/// Parse the inner portion of a code-block
+/// always consumes the entire input
+/// The first word, not preceded by whitespace, is the executor
+/// the next word, or first word preceded by whitespace is the name
+/// the next word, if it is in parenthesis, is the type-hint
+/// all following words until newline are annotations
+/// everything after (but not including) the first newline is the code
+fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
+    let (inp, executor) = valid_name(inp)?;
+    let (inp, name) = preceded(space1, valid_name)(inp)?;
+    let (mut inp, type_hint) = preceded(space0, delimited(tag("("), valid_name, tag(")")))(inp)?;
+    let mut annotations = Vec::new();
+    while let Ok((inp_ok, annotation)) = preceded(space1, valid_name)(inp) {
+        annotations.push(annotation);
+        inp = inp_ok;
+    }
+    let (code, _) = preceded(space0, line_ending)(inp)?;
+    let codeblock = CodeBlock {
+        executor: none_if_empty(executor),
+        name: none_if_empty(name),
+        type_hint: none_if_empty(type_hint),
+        annotations,
+        code: code,
+    };
+    let (rest, _) = take_while(|_| true)(code)?;
+    Ok((rest, codeblock))
+}
 
 fn is_allowed_at_name_start(c: char) -> bool {
     is_allowed_in_name(c) && !['-'].contains(&c)
@@ -275,9 +308,7 @@ fn valid_name<'a>(inp: &'a str) -> IResult<&'a str, &'a str> {
     verify(take_while1(is_allowed_in_name), is_valid_name)(inp)
 }
 
-
-
-fn none_if_empty(s: Span) -> Option<Span> {
+fn none_if_empty(s: &str) -> Option<&str> {
     if s.len() > 0 {
         Some(s)
     } else {
@@ -314,14 +345,14 @@ mod tests {
                 return false;
             }
             for i in 0..self.annotations.len() {
-                if !same_fragment(self.annotations[i], other.annotations[i]) {
+                if !(self.annotations[i] == other.annotations[i]) {
                     return false;
                 }
             }
-            same_fragment(self.code, other.code)
-                && same_opt_fragment(self.name, other.name)
-                && same_opt_fragment(self.executor, other.executor)
-                && same_opt_fragment(self.type_hint, other.type_hint)
+            self.code == other.code
+                && self.name == other.name
+                && self.executor == other.executor
+                && self.type_hint == other.type_hint
         }
     }
 
