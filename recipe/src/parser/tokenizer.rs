@@ -19,7 +19,8 @@ use super::{Heading, Keyword, Link, Span, Token, TokenType};
 
 #[derive(Debug)]
 pub struct Tokenizer<'a> {
-    path: &'a str,
+    /// The path being tokenized
+    pub origin_path: &'a str,
     src: Span<'a>,
     scope: usize,
 }
@@ -27,7 +28,7 @@ pub struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn from_str(src: &'a str, path: &'a str) -> Self {
         Tokenizer {
-            path,
+            origin_path: path,
             src: src.into(),
             scope: 0,
         }

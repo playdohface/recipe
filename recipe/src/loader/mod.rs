@@ -14,39 +14,31 @@ pub fn read_file(path: &str) -> Result<String, std::io::Error> {
 /// Load the entire AppContext
 pub fn load(root_path: &str) -> anyhow::Result<AppContext> {
     let recipe = read_file(root_path)?;
-    let mut loaded = HashSet::new();
-    // to avoid infinite loops on circular references
-    loaded.insert(root_path.to_owned());
     let mut tokens = Tokens::new();
-    tokens.push(Tokenizer::from_str(recipe.leak(), root_path));
+    tokens.load(recipe, root_path);
     let mut app_context = AppContext::new();
-    loop {
-        match tokens.next() {
-            Some(token) => {
-                use crate::parser::Keyword::*;
-                use TokenType::*;
-                match token.inner() {
-                    Link(link) => {
-                        if loaded.insert(link.path.to_owned()) {
-                            if let Ok(src) = read_file(link.path) {
-                                //TODO: .leak() is very lazy memory management but might just be good enough for now
-                                tokens.push(Tokenizer::from_str(src.leak(), link.path));
-                            }
-                        }
-                    }
-                    Block(block) => todo!(),
-                    Keyword(To) => load_command(&mut tokens, &mut app_context),
-                    Keyword(keyword) => todo!(),
-                    Inline(_) | Heading(_) | Newline => continue,
-                }
-            }
-            None => break,
+    while let Some(token) = tokens.next() {
+        use crate::parser::Keyword::*;
+        use TokenType::*;
+        match token.inner() {
+            Link(link) => load_link(&mut tokens, link.path),
+            Block(block) => load_block(&mut tokens, &mut app_context),
+            Keyword(To) => load_command(&mut tokens, &mut app_context),
+            Keyword(keyword) => todo!(),
+            Inline(_) | Heading(_) | Newline => continue,
         }
     }
+    Ok(app_context)
+}
 
-    todo!();
+fn load_link(tokens: &mut Tokens, path: &str) {
+    todo!()
+}
+
+fn load_block(tokens: &mut Tokens, app_context: &mut AppContext) {
+    todo!()
 }
 
 fn load_command(tokens: &mut Tokens, app_context: &mut AppContext) {
-    todo!();
+    todo!()
 }

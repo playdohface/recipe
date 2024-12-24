@@ -134,13 +134,24 @@ pub enum TokenType<'a> {
 
 pub struct Tokens<'a> {
     tokens: Vec<Tokenizer<'a>>,
+    loaded_paths: HashSet<&'a str>,
 }
 impl<'a> Tokens<'a> {
     pub fn new() -> Self {
-        Self { tokens: Vec::new() }
+        Self {
+            tokens: Vec::new(),
+            loaded_paths: HashSet::new(),
+        }
     }
-    pub fn push(&mut self, tokenizer: Tokenizer<'a>) {
-        self.tokens.push(tokenizer);
+    pub fn load(&mut self, src: String, origin_path: &'a str) {
+        if self.loaded_paths.insert(origin_path) {
+            self.tokens
+                //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
+                .push(Tokenizer::from_str(src.leak(), origin_path));
+        }
+    }
+    pub fn current_path(&self) -> Option<&'a str> {
+        self.tokens.last().map(|t| t.origin_path)
     }
 }
 impl<'a> Iterator for Tokens<'a> {
