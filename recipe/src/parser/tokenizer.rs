@@ -35,7 +35,7 @@ impl<'a> Tokenizer<'a> {
     }
     /// Only return the Tokens found inside a given heading
     /// The heading-slug is the kebab-case version of the heading text
-    fn scope_to_heading(&mut self, heading_slug: &str) {
+    pub fn scope_to_heading(&mut self, heading_slug: &str) {
         loop {
             match self.next() {
                 Some(Token {

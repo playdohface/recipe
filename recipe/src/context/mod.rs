@@ -40,12 +40,6 @@ impl<'a> AppContext<'a> {
             },
         }
     }
-    pub fn execute(&mut self) -> Result<(), error::ExecutionError> {
-        for (_, command) in self.commands.inner.iter() {
-            command.execute(&mut self.ctx)?;
-        }
-        Ok(())
-    }
     pub fn register_command(&mut self, name: &'a str, command: Command<'a>) {
         self.commands.inner.insert(name.to_owned(), command);
     }

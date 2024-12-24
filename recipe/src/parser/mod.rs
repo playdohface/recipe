@@ -134,7 +134,7 @@ pub enum TokenType<'a> {
 
 pub struct Tokens<'a> {
     tokens: Vec<Tokenizer<'a>>,
-    loaded_paths: HashSet<&'a str>,
+    loaded_paths: HashSet<String>,
 }
 impl<'a> Tokens<'a> {
     pub fn new() -> Self {
@@ -143,11 +143,19 @@ impl<'a> Tokens<'a> {
             loaded_paths: HashSet::new(),
         }
     }
-    pub fn load(&mut self, src: String, origin_path: &'a str) {
-        if self.loaded_paths.insert(origin_path) {
-            self.tokens
-                //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
-                .push(Tokenizer::from_str(src.leak(), origin_path));
+    pub fn load(&mut self, src: String, file_path: &'a str, heading_slug: Option<&'a str>) {
+        if self.loaded_paths.insert(format!(
+            "{}#{}",
+            file_path,
+            heading_slug.unwrap_or_default()
+        )) {
+            //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
+            //TODO: we are also prepending a newline here to avoid missing headings at the start of the file
+            let mut tokenizer = Tokenizer::from_str(format!("\n{src}").leak(), file_path);
+            if let Some(heading_slug) = heading_slug {
+                tokenizer.scope_to_heading(heading_slug);
+            }
+            self.tokens.push(tokenizer);
         }
     }
     pub fn current_path(&self) -> Option<&'a str> {
