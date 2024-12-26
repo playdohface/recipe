@@ -1,8 +1,6 @@
-use std::collections::HashSet;
-
 use crate::{
     context::AppContext,
-    parser::{tokenizer::Tokenizer, TokenType, Tokens},
+    parser::{TokenType, Tokens},
 };
 
 /// Load the entire AppContext
