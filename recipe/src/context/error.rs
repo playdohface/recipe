@@ -1,5 +1,7 @@
+use thiserror::Error;
 use super::Executor;
 
+#[derive(Debug)]
 pub enum ExecutionError {
     Generic,
     TemplateError,

@@ -22,7 +22,7 @@ impl<'a> Template for CodeBlock<'a> {
 }
 
 /// AppContext serves as the anchor for an invocation of recipe
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct AppContext<'a> {
     commands: Commands<'a>,
     ctx: Context,
@@ -39,8 +39,8 @@ impl<'a> AppContext<'a> {
             },
         }
     }
-    pub fn register_command(&mut self, name: &'a str, command: Command<'a>) {
-        self.commands.inner.insert(name.to_owned(), command);
+    pub fn register_command(&mut self, name: String, command: Command<'a>) {
+        self.commands.inner.insert(name, command);
     }
     pub fn register_variable(&mut self, name: &str, value: Value) {
         self.ctx.root.insert(name.to_owned(), value);
@@ -51,12 +51,12 @@ impl<'a> AppContext<'a> {
 }
 
 /// Wraps all the loaded Commands
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Commands<'a> {
     inner: BTreeMap<String, Command<'a>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Executors {
     inner: HashMap<String, Executor>,
 }
@@ -79,7 +79,7 @@ impl Executors {
 
 /// Something that can execute a script of a certain type
 /// May need tweaking to accomodate for different types of scripts
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Executor {
     program: String,
     args: Vec<String>,
@@ -107,7 +107,7 @@ impl Executor {
 }
 
 /// Wraps the context passed to each command-invocation
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct Context {
     /// the root of the template context
     root: HashMap<String, serde_json::Value>,
@@ -128,7 +128,7 @@ impl Context {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 /// Represents a single loaded command
 pub enum Command<'a> {
     Composite(Vec<Command<'a>>),

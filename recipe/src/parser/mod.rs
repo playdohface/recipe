@@ -9,18 +9,21 @@ use nom::{
     sequence::{delimited, preceded, terminated},
     IResult, Parser,
 };
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom_locate::LocatedSpan;
 mod error;
 pub mod tokenizer;
 use error::ParseError;
 use tokenizer::Tokenizer;
+use crate::context::Command;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Heading<'a> {
-    level: usize,
-    text: &'a str,
+    pub level: usize,
+    pub text: &'a str,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -114,6 +117,12 @@ impl<'a> Token<'a> {
     pub fn inner(&self) -> &TokenType<'a> {
         &self.inner
     }
+    pub fn is_inline(&self) -> bool {
+        matches!(self.inner, TokenType::Inline(_))
+    }
+    pub fn is_newline(&self) -> bool {
+        self.inner == TokenType::Newline
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -174,6 +183,28 @@ impl<'a> Iterator for Tokens<'a> {
         }
         None
     }
+}
+
+/// Parse a series of Commands from Tokens, i.e. the body of a To-Directive
+pub fn parse_to_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Vec<Command<'a>> {
+    let mut commands = Vec::new();
+    while let Some(token) =  tokens.next() {
+        match token.inner {
+            TokenType::Block(block) => {
+                if let Ok((_,codeblock)) = parse_code_block(block) {
+                    commands.push(Command::CodeBlock(codeblock));
+                } else {
+                    todo!();
+                }
+            },
+            TokenType::Keyword(Keyword::Set) => {
+                todo!();
+            }
+            TokenType::Heading(_) => break,
+            _ => continue //TODO warnings/errors
+        }
+    }
+    commands
 }
 
 fn parse_set_directive<'a>(inp: &'a [Token]) -> IResult<&'a [Token<'a>], SetDirective<'a>> {
@@ -294,19 +325,16 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
 /// all following words until newline are annotations
 /// everything after (but not including) the first newline is the code
 fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
-    let (inp, executor) = valid_name(inp)?;
-    let (inp, name) = preceded(space1, valid_name)(inp)?;
-    let (mut inp, type_hint) = preceded(space0, delimited(tag("("), valid_name, tag(")")))(inp)?;
-    let mut annotations = Vec::new();
-    while let Ok((inp_ok, annotation)) = preceded(space1, valid_name)(inp) {
-        annotations.push(annotation);
-        inp = inp_ok;
-    }
+    let (inp, executor) = opt(valid_name)(inp)?;
+    let (inp, name) = opt(preceded(space1, valid_name))(inp)?;
+    let (mut inp, type_hint) = opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
+    let (inp, annotations) = many0(preceded(space1, valid_name))(inp)?;
+
     let (code, _) = preceded(space0, line_ending)(inp)?;
     let codeblock = CodeBlock {
-        executor: none_if_empty(executor),
-        name: none_if_empty(name),
-        type_hint: none_if_empty(type_hint),
+        executor,
+        name,
+        type_hint,
         annotations,
         code,
     };
@@ -324,14 +352,6 @@ fn is_valid_name(name: &str) -> bool {
 
 fn valid_name(inp: &str) -> IResult<&str, &str> {
     verify(take_while1(is_allowed_in_name), is_valid_name)(inp)
-}
-
-fn none_if_empty(s: &str) -> Option<&str> {
-    if s.is_empty() {
-        Some(s)
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]
@@ -372,6 +392,49 @@ mod tests {
                 && self.executor == other.executor
                 && self.type_hint == other.type_hint
         }
+    }
+
+    #[test]
+    fn test_parse_code_block() {
+        let undertest = r#"sh foo_bar (object) annot1 annot2
+echo "I am a {{ banana }}"
+"#;
+        let expected = CodeBlock {
+            executor: Some("sh".into()),
+            name: Some("foo_bar".into()),
+            type_hint: Some("object".into()),
+            annotations: vec!["annot1".into(), "annot2".into()],
+            code: "echo \"I am a {{ banana }}\"\n".into(),
+        };
+
+        let from_token: CodeBlock = TokenType::Block(undertest.into())
+            .mock_token()
+            .try_into()
+            .unwrap();
+
+        let (_, parsed) = parse_code_block(undertest.into()).unwrap();
+        assert!(parsed.eq_by_value(&expected));
+        assert!(from_token.eq_by_value(&expected));
+
+        let undertest = r#"sh
+echo "I am a {{ banana }}"
+"#;
+        let expected = CodeBlock {
+            executor: Some("sh".into()),
+            name: None,
+            type_hint: None,
+            annotations: vec![],
+            code: "echo \"I am a {{ banana }}\"\n".into(),
+        };
+
+        let from_token: CodeBlock = TokenType::Block(undertest.into())
+            .mock_token()
+            .try_into()
+            .unwrap();
+
+        let (_, parsed) = parse_code_block(undertest.into()).unwrap();
+        assert!(parsed.eq_by_value(&expected));
+        assert!(from_token.eq_by_value(&expected));
     }
 
     #[test]
@@ -444,27 +507,4 @@ mod tests {
     //     });
     //     assert_parse_token_with_inner(undertest, parse_to_directive, expected);
     // }
-
-    //     #[test]
-    //     fn test_parse_code_block() {
-    //         let undertest = r#"sh foo_bar (object) annot1 annot2
-    // echo "I am a {{ banana }}"
-    // "#;
-    //         let final_block = CodeBlock {
-    //             executor: Some("sh".into()),
-    //             name: Some("foo_bar".into()),
-    //             type_hint: Some("object".into()),
-    //             annotations: vec!["annot1".into(), "annot2".into()],
-    //             code: "echo \"I am a {{ banana }}\"\n".into(),
-    //         };
-
-    //         let from_token: CodeBlock = TokenType::Block(undertest.into())
-    //             .mock_token()
-    //             .try_into()
-    //             .unwrap();
-
-    //         let (_, parsed) = parse_code_block(undertest.into()).unwrap();
-    //         assert!(parsed.eq_by_value(&final_block));
-    //         assert!(from_token.eq_by_value(&final_block));
-    //     }
 }

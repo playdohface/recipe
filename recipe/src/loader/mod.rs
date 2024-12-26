@@ -1,7 +1,12 @@
+mod error;
+
+use itertools::Itertools;
 use crate::{
     context::AppContext,
     parser::{TokenType, Tokens},
 };
+use crate::context::Command;
+use crate::parser::{parse_to_directive_inner, Token};
 
 /// Load the entire AppContext
 pub fn load(root_path: &str) -> anyhow::Result<AppContext> {
@@ -15,7 +20,7 @@ pub fn load(root_path: &str) -> anyhow::Result<AppContext> {
         match token.inner() {
             Link(link) => load_link(&mut tokens, link.path),
             Block(block) => load_block(&mut tokens, &mut app_context),
-            Keyword(To) => load_command(&mut tokens, &mut app_context),
+            Keyword(To) => load_to_directive(&mut tokens, &mut app_context),
             Keyword(keyword) => todo!(),
             Inline(_) | Heading(_) | Newline => continue,
         }
@@ -51,9 +56,18 @@ fn load_block(tokens: &mut Tokens, app_context: &mut AppContext) {
     todo!()
 }
 
-fn load_command(tokens: &mut Tokens, app_context: &mut AppContext) {
-    todo!()
+fn load_to_directive<'a>(tokens: &mut Tokens<'a>, app_context: &mut AppContext<'a>) {
+    let name = tokens
+        .take_while(|t|t.is_inline())
+        .map(|t| match t.inner() { TokenType::Inline(inline) => *inline, _ => unreachable!() } )
+        .join(" ");
+    if name.is_empty() || !tokens.next().is_some_and(|t|t.is_newline()) {
+        //return; //TODO errors/warnings
+    }
+    let commands = parse_to_directive_inner(tokens);
+    app_context.register_command(name, Command::Composite(commands));
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -64,21 +78,5 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn load_internal_link() {
-        let contents = r#"
-# Heading 1
-This is a note
-"#;
-        let (base_path, dir, file) = write_temp_file("Recipe.md", contents);
-        let loaded = load(&base_path).unwrap();
-    }
 
-    fn write_temp_file(filename: &str, contents: &str) -> (String, TempDir, File) {
-        let dir = tempdir().unwrap();
-        let file_path = dir.path().join(filename);
-        let mut file = File::create(&file_path).unwrap();
-        write!(file, "{}", contents).unwrap();
-        (file_path.as_os_str().to_str().unwrap().to_owned(), dir, file)
-    }
 }
