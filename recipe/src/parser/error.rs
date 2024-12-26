@@ -1,4 +1,3 @@
-use nom::error::VerboseError;
 
 use super::{Span, Token, TokenType};
 

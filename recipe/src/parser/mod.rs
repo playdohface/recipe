@@ -1,26 +1,20 @@
-use std::{
-    collections::{HashMap, HashSet},
-    ops::RangeFrom,
-};
+use std::collections::HashSet;
 
-use anyhow::anyhow;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take, take_till, take_until, take_while, take_while1},
-    character::complete::{char, digit1, line_ending, space0, space1},
+    bytes::complete::{tag, take_while, take_while1},
+    character::complete::{digit1, line_ending, space0, space1},
     combinator::{fail, verify},
-    error::{Error, VerboseError},
-    multi::many1_count,
+    error::VerboseError,
     sequence::{delimited, preceded, terminated},
-    IResult, InputIter, InputLength, InputTake, Parser, Slice,
+    IResult, Parser,
 };
-use nom_locate::{position, LocatedSpan};
+use nom_locate::LocatedSpan;
 mod error;
 pub mod tokenizer;
 use error::ParseError;
 use tokenizer::Tokenizer;
 
-use crate::loader;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +156,11 @@ impl<'a> Tokens<'a> {
         self.tokens.last().map(|t| t.origin_path)
     }
 }
+impl<'a> Default for Tokens<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl<'a> Iterator for Tokens<'a> {
     type Item = Token<'a>;
 
@@ -181,7 +180,7 @@ fn parse_set_directive<'a>(inp: &'a [Token]) -> IResult<&'a [Token<'a>], SetDire
     let mut iter = inp.iter().map(|t| &t.inner).enumerate();
     match (iter.next(), iter.next()) {
         (Some((_, TokenType::Keyword(Keyword::Set))), Some((_, TokenType::Inline(variable)))) => {
-            let variable = if let Ok((_, variable)) = parse_selection_path(*variable) {
+            let variable = if let Ok((_, variable)) = parse_selection_path(variable) {
                 variable
             } else {
                 return fail(inp);
@@ -245,7 +244,7 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
             return fail(inp);
         }
     } else if let Ok((rest, name)) = valid_name(inp) {
-        return Ok((rest, Selection::Key(&name)));
+        return Ok((rest, Selection::Key(name)));
     }
     fail(inp)
 }
@@ -309,7 +308,7 @@ fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
         name: none_if_empty(name),
         type_hint: none_if_empty(type_hint),
         annotations,
-        code: code,
+        code,
     };
     let (rest, _) = take_while(|_| true)(code)?;
     Ok((rest, codeblock))
@@ -319,16 +318,16 @@ fn is_allowed_at_name_start(c: char) -> bool {
     is_allowed_in_name(c) && !['-'].contains(&c)
 }
 
-fn is_valid_name<'a>(name: &str) -> bool {
+fn is_valid_name(name: &str) -> bool {
     name.starts_with(is_allowed_at_name_start)
 }
 
-fn valid_name<'a>(inp: &'a str) -> IResult<&'a str, &'a str> {
+fn valid_name(inp: &str) -> IResult<&str, &str> {
     verify(take_while1(is_allowed_in_name), is_valid_name)(inp)
 }
 
 fn none_if_empty(s: &str) -> Option<&str> {
-    if s.len() > 0 {
+    if s.is_empty() {
         Some(s)
     } else {
         None

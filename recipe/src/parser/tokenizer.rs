@@ -1,6 +1,5 @@
 use std::ops::RangeFrom;
 
-use anyhow::anyhow;
 use convert_case::{Case, Casing};
 use nom::{
     branch::alt,
@@ -13,7 +12,6 @@ use nom::{
 };
 use nom_locate::position;
 
-use crate::loader;
 
 use super::{Heading, Keyword, Link, Span, Token, TokenType};
 
@@ -58,7 +56,7 @@ impl<'a> Iterator for Tokenizer<'a> {
         if let Ok((rest, found)) = find_next(any_token)(self.src) {
             match found.inner {
                 TokenType::Heading(Heading { level, .. }) if level <= self.scope => {
-                    return None;
+                    None
                 }
                 _ => {
                     self.src = rest;

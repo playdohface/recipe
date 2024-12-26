@@ -1,13 +1,12 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    path::Component,
     process::Output,
 };
 
 mod error;
 
 use error::ExecutionError;
-use handlebars::{template, Handlebars};
+use handlebars::Handlebars;
 use serde_json::{json, Value};
 
 use crate::parser::CodeBlock;
@@ -23,7 +22,7 @@ impl<'a> Template for CodeBlock<'a> {
 }
 
 /// AppContext serves as the anchor for an invocation of recipe
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AppContext<'a> {
     commands: Commands<'a>,
     ctx: Context,
@@ -52,7 +51,7 @@ impl<'a> AppContext<'a> {
 }
 
 /// Wraps all the loaded Commands
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Commands<'a> {
     inner: BTreeMap<String, Command<'a>>,
 }
@@ -108,7 +107,7 @@ impl Executor {
 }
 
 /// Wraps the context passed to each command-invocation
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Context {
     /// the root of the template context
     root: HashMap<String, serde_json::Value>,
@@ -140,9 +139,7 @@ impl<'a> Command<'a> {
         match self {
             Self::Composite(commands) => {
                 for cmd in commands {
-                    if let Err(e) = cmd.execute(ctx) {
-                        return Err(e);
-                    }
+                    cmd.execute(ctx)?
                 }
                 Ok(())
             }
