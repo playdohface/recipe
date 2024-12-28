@@ -7,9 +7,9 @@ mod error;
 
 use error::ExecutionError;
 use handlebars::Handlebars;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
 
-use crate::parser::CodeBlock;
+use crate::parser::{CodeBlock, Selection, SelectionPath, SetDirective, Val};
 
 trait Template {
     fn template(&self) -> &str;
@@ -34,16 +34,13 @@ impl<'a> AppContext<'a> {
                 inner: BTreeMap::new(),
             },
             ctx: Context {
-                root: HashMap::new(),
+                root: json!({}),
                 executors: Executors::default(),
             },
         }
     }
     pub fn register_command(&mut self, name: String, command: Command<'a>) {
         self.commands.inner.insert(name, command);
-    }
-    pub fn register_variable(&mut self, name: &str, value: Value) {
-        self.ctx.root.insert(name.to_owned(), value);
     }
     pub fn register_executor(&mut self, name: &str, executor: Executor) {
         self.ctx.executors.inner.insert(name.to_owned(), executor);
@@ -110,11 +107,23 @@ impl Executor {
 #[derive(Debug, Default, PartialEq)]
 pub struct Context {
     /// the root of the template context
-    root: HashMap<String, serde_json::Value>,
+    root: serde_json::Value,
     /// the loaded Executors
     executors: Executors,
 }
 impl Context {
+    fn map_mut(&mut self) -> &mut Map<String, Value> {
+        self.root.as_object_mut().expect("root is always an object")
+    }
+    fn map(&self) -> &Map<String, Value> {
+        self.root.as_object().expect("root is always an object")
+    }
+    fn get(&self, selection_path: &SelectionPath) -> Option<&Value> {
+        self.root.pointer(&selection_path.json_pointer())
+    }
+    fn get_mut(&mut self, selection_path: &SelectionPath) -> Option<&mut Value> {
+        self.root.pointer_mut(&selection_path.json_pointer())
+    }
     fn register_execution(&mut self, output: Output, type_hint: Option<&str>) {
         //TODO: implement type converters
         let stdout =
@@ -122,9 +131,9 @@ impl Context {
         let stderr =
             json!(String::from_utf8(output.stderr).unwrap_or("TODO: Not UTF8!".to_owned()));
         let statuscode = json!(output.status.code());
-        self.root.insert("output".to_owned(), stdout);
-        self.root.insert("error".to_owned(), stderr);
-        self.root.insert("status".to_owned(), statuscode);
+        self.map_mut().insert("output".to_owned(), stdout);
+        self.map_mut().insert("error".to_owned(), stderr);
+        self.map_mut().insert("status".to_owned(), statuscode);
     }
 }
 
@@ -133,6 +142,7 @@ impl Context {
 pub enum Command<'a> {
     Composite(Vec<Command<'a>>),
     CodeBlock(CodeBlock<'a>),
+    SetDirective(SetDirective<'a>),
 }
 impl<'a> Command<'a> {
     fn execute(&self, ctx: &mut Context) -> Result<(), error::ExecutionError> {
@@ -143,20 +153,77 @@ impl<'a> Command<'a> {
                 }
                 Ok(())
             }
-            Self::CodeBlock(codeblock) => {
-                let executor = codeblock.executor.ok_or(ExecutionError::MissingExecutor)?;
-                let template = codeblock.code;
-                //TODO we may not want to construct this every time...
-                let handlebars = Handlebars::new();
-                let code = handlebars
-                    .render_template(template, &ctx.root)
-                    .map_err(|e| ExecutionError::TemplateError)?;
-                let output = ctx.executors.run(executor, code)?;
-                ctx.register_execution(output, codeblock.type_hint);
-                Ok(())
-            }
+            Self::CodeBlock(code_block) => execute_code_block(code_block, ctx),
+            Self::SetDirective(set_directive) => execute_set_directive(set_directive.clone(), ctx),
         }
     }
+}
+
+fn execute_code_block(code_block: &CodeBlock, ctx: &mut Context) -> Result<(), ExecutionError> {
+    let executor = code_block.executor.ok_or(ExecutionError::MissingExecutor)?;
+    let template = code_block.code;
+    //TODO we may not want to construct this every time...
+    let handlebars = Handlebars::new();
+    let code = handlebars
+        .render_template(template, &ctx.root)
+        .map_err(|e| ExecutionError::TemplateError)?;
+    let output = ctx.executors.run(executor, code)?;
+    ctx.register_execution(output, code_block.type_hint);
+    Ok(())
+}
+
+/// Execute a Set-Directive (i.e. mutate the context)
+/// TODO this should be broken up for better readability
+fn execute_set_directive<'a>(
+    set_directive: SetDirective<'a>,
+    ctx: &mut Context,
+) -> Result<(), ExecutionError> {
+    let value = match set_directive.value {
+        Val::ContextRef(s) => ctx.get(&s).ok_or(ExecutionError::ValueNotFound)?.clone(),
+        Val::Literal(v) => v,
+    };
+    if let Some(existing) = ctx.get_mut(&set_directive.variable) {
+        *existing = value;
+    } else if set_directive.variable.0.len() == 1 {
+        if let Some(Selection::Key(key)) = set_directive.variable.last() {
+            ctx.map_mut().insert(key.to_string(), value);
+        } else {
+            return Err(ExecutionError::InvalidPath);
+        }
+    } else {
+        let parent = ctx
+            .get_mut(
+                &set_directive
+                    .variable
+                    .parent()
+                    .ok_or(ExecutionError::InvalidPath)?,
+            )
+            .ok_or(ExecutionError::InvalidPath)?;
+
+        match set_directive.variable.last() {
+            Some(Selection::Index(i)) => {
+                if let Some(arr) = parent.as_array_mut() {
+                    if arr.len() <= *i {
+                        arr.extend(std::iter::repeat_n(Value::Null, i - arr.len()));
+                        arr.push(value);
+                    } else {
+                        arr[*i] = value;
+                    }
+                } else {
+                    return Err(ExecutionError::InvalidPath);
+                }
+            }
+            Some(Selection::Key(key)) => {
+                if let Some(obj) = parent.as_object_mut() {
+                    obj.insert(key.to_string(), value);
+                } else {
+                    return Err(ExecutionError::InvalidPath);
+                }
+            }
+            None => unreachable!("if it has a parent it must have a last element"),
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -174,11 +241,83 @@ mod tests {
     }
 
     #[test]
+    fn can_execute_set_directive() {
+        let mut ctx = Context {
+            root: json!({}),
+            executors: Executors::default(),
+        };
+        let literal = json!({
+            "foo" : 1,
+            "bar" : ["a", "b", "c"]
+        });
+        let set_directive = SetDirective {
+            variable: SelectionPath(vec![Selection::Key("hello")]),
+            value: Val::Literal(literal.clone()),
+        };
+        let res = execute_set_directive(set_directive, &mut ctx);
+        assert_eq!(ctx.map(), json!({"hello" : literal}).as_object().unwrap());
+
+        let literal = json!({
+            "foo" : 2,
+            "bar" : ["a"]
+        });
+        let set_directive = SetDirective {
+            variable: SelectionPath(vec![Selection::Key("hello")]),
+            value: Val::Literal(literal.clone()),
+        };
+        let res = execute_set_directive(set_directive, &mut ctx);
+        assert_eq!(ctx.map(), json!({"hello" : literal}).as_object().unwrap());
+
+        let set_directive = SetDirective {
+            variable: SelectionPath(vec![
+                Selection::Key("hello"),
+                Selection::Key("bar"),
+                Selection::Index(4),
+            ]),
+            value: Val::Literal(json!("here")),
+        };
+        let res = execute_set_directive(set_directive, &mut ctx);
+        assert_eq!(
+            ctx.map(),
+            json! ({
+                "hello" : {
+                    "foo" : 2,
+                    "bar" : ["a", null, null, null, "here"]
+                }
+            })
+            .as_object()
+            .unwrap()
+        );
+
+        let set_directive = SetDirective {
+            variable: SelectionPath(vec![Selection::Key("hello"), Selection::Key("baz")]),
+            value: Val::ContextRef(SelectionPath(vec![
+                Selection::Key("hello"),
+                Selection::Key("bar"),
+                Selection::Index(4),
+            ])),
+        };
+        let res = execute_set_directive(set_directive, &mut ctx);
+        assert_eq!(
+            ctx.map(),
+            json! ({
+                "hello" : {
+                    "foo" : 2,
+                    "bar" : ["a", null, null, null, "here"],
+                    "baz" : "here"
+                }
+            })
+            .as_object()
+            .unwrap()
+        );
+    }
+
+    #[test]
     fn can_execute_and_interpolate_codeblock() {
         let codeblock = shell_code_block("echo \"Hello, World!\"\n");
         let command = Command::CodeBlock(codeblock);
         let mut context = Context {
-            root: HashMap::new(),
+            root: json!({}),
             executors: Executors::default(),
         };
         let res = command.execute(&mut context);
@@ -207,7 +346,7 @@ mod tests {
             code: "console.log(\"Hello from node\");".into(),
         });
         let mut context = Context {
-            root: HashMap::new(),
+            root: json!({}),
             executors: Executors::default(),
         };
         let res = command.execute(&mut context);

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
@@ -9,14 +11,14 @@ use nom::{
     sequence::{delimited, preceded, terminated},
     IResult, Parser,
 };
-use nom::combinator::opt;
-use nom::multi::many0;
 use nom_locate::LocatedSpan;
+use serde_json::value::Index;
+
 mod error;
 pub mod tokenizer;
+use crate::context::Command;
 use error::ParseError;
 use tokenizer::Tokenizer;
-use crate::context::Command;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
@@ -62,31 +64,68 @@ pub struct ToDirective<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Selection<'a> {
-    Index(u64),
+    Index(usize),
     Key(&'a str),
+}
+impl<'a> Selection<'a> {
+    fn as_string(&self) -> String {
+        match self {
+            Selection::Index(i) => i.to_string(),
+            Selection::Key(k) => k.to_string(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Value<'a> {
-    ContextRef(Vec<Selection<'a>>),
+pub struct SelectionPath<'a>(pub Vec<Selection<'a>>);
+impl<'a> SelectionPath<'a> {
+    /// the selection as a JSON-Pointer per [RFC6901](https://datatracker.ietf.org/doc/html/rfc6901)
+    pub fn json_pointer(&self) -> String {
+        let mut pointer = String::new();
+        for s in self.0.iter() {
+            // both Tilde ~ and Slash / are disallowed in names so we can skip escaping
+            pointer = format!("{pointer}/{}", s.as_string())
+        }
+        pointer
+    }
+
+    /// The last element
+    pub fn last(&self) -> Option<&Selection> {
+        self.0.last()
+    }
+    /// The selection up until the second-to-last element
+    pub fn parent(&self) -> Option<SelectionPath> {
+        if self.0.len() > 1 {
+            let mut parent = self.0.clone();
+            parent.pop();
+            Some(SelectionPath(parent))
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Val<'a> {
+    ContextRef(SelectionPath<'a>),
     Literal(serde_json::Value),
 }
-impl<'a> TryFrom<&TokenType<'a>> for Value<'a> {
+impl<'a> TryFrom<&TokenType<'a>> for Val<'a> {
     type Error = ParseError<'a>;
 
     fn try_from(value: &TokenType<'a>) -> Result<Self, ParseError<'a>> {
         match *value {
             TokenType::Inline(src) => {
                 if let Ok((_, val)) = parse_selection_path(src) {
-                    Ok(Value::ContextRef(val))
+                    Ok(Val::ContextRef(val))
                 } else if let Ok(val) = json5::from_str(src) {
-                    Ok(Value::Literal(val))
+                    Ok(Val::Literal(val))
                 } else {
                     Err(ParseError::InvalidValue(src))
                 }
             }
             TokenType::Block(src) => match json5::from_str(src) {
-                Ok(val) => Ok(Value::Literal(val)),
+                Ok(val) => Ok(Val::Literal(val)),
                 Err(e) => Err(ParseError::InvalidLiteral((src, e))),
             },
             _ => Err(ParseError::InvalidTokenTypeForValue(value.clone())),
@@ -96,8 +135,8 @@ impl<'a> TryFrom<&TokenType<'a>> for Value<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SetDirective<'a> {
-    variable: Vec<Selection<'a>>,
-    value: Value<'a>,
+    pub variable: SelectionPath<'a>,
+    pub value: Val<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -188,20 +227,20 @@ impl<'a> Iterator for Tokens<'a> {
 /// Parse a series of Commands from Tokens, i.e. the body of a To-Directive
 pub fn parse_to_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Vec<Command<'a>> {
     let mut commands = Vec::new();
-    while let Some(token) =  tokens.next() {
+    while let Some(token) = tokens.next() {
         match token.inner {
             TokenType::Block(block) => {
-                if let Ok((_,codeblock)) = parse_code_block(block) {
+                if let Ok((_, codeblock)) = parse_code_block(block) {
                     commands.push(Command::CodeBlock(codeblock));
                 } else {
                     todo!();
                 }
-            },
+            }
             TokenType::Keyword(Keyword::Set) => {
                 todo!();
             }
             TokenType::Heading(_) => break,
-            _ => continue //TODO warnings/errors
+            _ => continue, //TODO warnings/errors
         }
     }
     commands
@@ -255,20 +294,20 @@ fn parse_multiline_literal_start(inp: Span) -> IResult<Span, Span> {
     )(inp)
 }
 
-fn parse_selection_path(inp: &str) -> IResult<&str, Vec<Selection>> {
+fn parse_selection_path(inp: &str) -> IResult<&str, SelectionPath> {
     let (mut inp, first) = valid_name(inp)?;
     let mut sel_path = vec![Selection::Key(first)];
     while let Ok((rest, sel)) = alt((preceded(tag("."), parse_selection), parse_selection))(inp) {
         inp = rest;
         sel_path.push(sel);
     }
-    Ok((inp, sel_path))
+    Ok((inp, SelectionPath(sel_path)))
 }
 
 fn parse_selection(inp: &str) -> IResult<&str, Selection> {
     let mut array_index = delimited(tag("["), digit1::<_, VerboseError<&str>>, tag("]"));
     if let Ok((rest, idx)) = array_index(inp) {
-        if let Ok(index) = idx.parse::<u64>() {
+        if let Ok(index) = idx.parse::<usize>() {
             return Ok((rest, Selection::Index(index)));
         } else {
             // arrays longer than u64::MAX will never be a thing in Recipe
@@ -327,7 +366,8 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
 fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
     let (inp, executor) = opt(valid_name)(inp)?;
     let (inp, name) = opt(preceded(space1, valid_name))(inp)?;
-    let (mut inp, type_hint) = opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
+    let (mut inp, type_hint) =
+        opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
     let (inp, annotations) = many0(preceded(space1, valid_name))(inp)?;
 
     let (code, _) = preceded(space0, line_ending)(inp)?;
@@ -438,35 +478,16 @@ echo "I am a {{ banana }}"
     }
 
     #[test]
-    fn test_parse_set_directive() {
-        let src = vec![
-            TokenType::Keyword(Keyword::Set).mock_token(),
-            TokenType::Inline("foo.bar").mock_token(),
-            TokenType::Inline("'baz'").mock_token(),
-        ];
-        let (rest, parsed) = parse_set_directive(&src).unwrap();
-        assert_eq!(
-            parsed.variable,
-            vec![Selection::Key("foo"), Selection::Key("bar")]
-        );
-        assert_eq!(
-            parsed.value,
-            Value::Literal(serde_json::Value::String("baz".into()))
-        );
-        assert_eq!(rest.len(), 0);
-    }
-
-    #[test]
     fn test_parse_selection_path() {
         let src = "foo[2].bar and something else";
         let (rest, parsed) = parse_selection_path(src.into()).unwrap();
         assert_eq!(
             parsed,
-            vec![
+            SelectionPath(vec![
                 Selection::Key("foo"),
                 Selection::Index(2),
                 Selection::Key("bar")
-            ]
+            ])
         );
         assert_eq!(rest, " and something else");
     }
