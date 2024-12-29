@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::iter::Peekable;
 
 use nom::combinator::opt;
 use nom::multi::many0;
@@ -233,11 +234,15 @@ pub fn parse_to_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Vec<Command<'a>>
                 if let Ok((_, codeblock)) = parse_code_block(block) {
                     commands.push(Command::CodeBlock(codeblock));
                 } else {
-                    todo!();
+                    todo!("Invalid Code Block");
                 }
             }
             TokenType::Keyword(Keyword::Set) => {
-                todo!();
+                if let Ok(set_directive) = parse_set_directive_inner(tokens) {
+                    commands.push(Command::SetDirective(set_directive));
+                } else {
+                    todo!("Invalid Set Directive");
+                }
             }
             TokenType::Heading(_) => break,
             _ => continue, //TODO warnings/errors
@@ -246,41 +251,28 @@ pub fn parse_to_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Vec<Command<'a>>
     commands
 }
 
-fn parse_set_directive<'a>(inp: &'a [Token]) -> IResult<&'a [Token<'a>], SetDirective<'a>> {
-    let mut iter = inp.iter().map(|t| &t.inner).enumerate();
-    match (iter.next(), iter.next()) {
-        (Some((_, TokenType::Keyword(Keyword::Set))), Some((_, TokenType::Inline(variable)))) => {
-            let variable = if let Ok((_, variable)) = parse_selection_path(variable) {
-                variable
-            } else {
-                return fail(inp);
-            };
-            let mut next = iter.next();
-            while let Some((i, TokenType::Newline)) = next {
-                next = iter.next();
-            }
-            let (i, value) = if let Some((i, value)) = next {
-                (i, value.try_into())
-            } else {
-                return fail(inp);
-            };
-            if let Ok(value) = value {
-                let rest = if inp.len() >= i { &inp[i + 1..] } else { &[] };
-                Ok((rest, SetDirective { variable, value }))
-            } else {
-                fail(inp)
-            }
+fn parse_set_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Result<SetDirective<'a>, ParseError<'a>> {
+    if let (Some(Token {inner: TokenType::Inline(variable), ..}),
+            Some(Token {inner: TokenType::Inline(value), ..}),
+            Some(Token {inner: TokenType::Newline, ..})) = (tokens.next(), tokens.next(), tokens.next()) {
+        let (_,variable) = parse_selection_path(variable).map_err(ParseError::InvalidSelection)?;
+        if let Ok ((_, value)) = parse_selection_path(value) {
+            Ok(SetDirective{variable, value: Val::ContextRef(value)})
+        } else if let Ok(literal) = json5::from_str(value) {
+            Ok(SetDirective{variable, value: Val::Literal(literal)})
+        } else {
+            Err(ParseError::InvalidValue(value))
         }
-        _ => fail(inp),
+    } else {
+        Err(ParseError::Generic("Wrong Tokentypes for Set-directive"))
     }
 }
-
 fn is_allowed_in_ident(c: char) -> bool {
     !c.is_whitespace() && c != '`'
 }
 
 fn is_allowed_in_name(c: char) -> bool {
-    is_allowed_in_ident(c) && !['(', ')', '.', '[', ']', '{', '}', '\'', '"'].contains(&c)
+    is_allowed_in_ident(c) && !['(', ')', '.', '[', ']', '{', '}', '\'', '"', '/', '~'].contains(&c)
 }
 
 fn ends_literal(c: char) -> bool {

@@ -3,7 +3,7 @@ use super::{Span, Token, TokenType};
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
-    Generic(Span<'a>),
+    Generic(&'a str),
     InvalidToken(Token<'a>),
     InvalidCodeBlock(&'a str),
 

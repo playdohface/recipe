@@ -1,12 +1,12 @@
 mod error;
 
-use itertools::Itertools;
+use crate::context::Command;
+use crate::parser::{parse_to_directive_inner, Token};
 use crate::{
     context::AppContext,
     parser::{TokenType, Tokens},
 };
-use crate::context::Command;
-use crate::parser::{parse_to_directive_inner, Token};
+use itertools::Itertools;
 
 /// Load the entire AppContext
 pub fn load(root_path: &str) -> anyhow::Result<AppContext> {
@@ -57,17 +57,28 @@ fn load_block(tokens: &mut Tokens, app_context: &mut AppContext) {
 }
 
 fn load_to_directive<'a>(tokens: &mut Tokens<'a>, app_context: &mut AppContext<'a>) {
-    let name = tokens
-        .take_while(|t|t.is_inline())
-        .map(|t| match t.inner() { TokenType::Inline(inline) => *inline, _ => unreachable!() } )
-        .join(" ");
-    if name.is_empty() || !tokens.next().is_some_and(|t|t.is_newline()) {
+    let mut names = Vec::new();
+    for token in tokens.by_ref() {
+        match token.inner() {
+            TokenType::Inline(inline) => {
+                names.push(*inline);
+            },
+            TokenType::Newline => break,
+            _ => {
+                //TODO Output a warning. Do we break or continue here?
+                continue;
+            }
+
+        }
+    }
+    let name = names.iter().join(" ");
+    if name.is_empty()  {
+
         //return; //TODO errors/warnings
     }
     let commands = parse_to_directive_inner(tokens);
     app_context.register_command(name, Command::Composite(commands));
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -77,6 +88,4 @@ mod tests {
     use tempfile::{tempdir, TempDir};
 
     use super::*;
-
-
 }

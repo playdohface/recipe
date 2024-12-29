@@ -174,8 +174,8 @@ fn execute_code_block(code_block: &CodeBlock, ctx: &mut Context) -> Result<(), E
 
 /// Execute a Set-Directive (i.e. mutate the context)
 /// TODO this should be broken up for better readability
-fn execute_set_directive<'a>(
-    set_directive: SetDirective<'a>,
+fn execute_set_directive(
+    set_directive: SetDirective,
     ctx: &mut Context,
 ) -> Result<(), ExecutionError> {
     let value = match set_directive.value {
