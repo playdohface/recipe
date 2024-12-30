@@ -1,25 +1,25 @@
 use std::collections::HashSet;
-use std::iter::Peekable;
 
-use nom::combinator::opt;
-use nom::multi::many0;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{digit1, line_ending, space0, space1},
     combinator::{fail, verify},
     error::VerboseError,
-    sequence::{delimited, preceded, terminated},
-    IResult, Parser,
+    IResult,
+    sequence::{delimited, preceded},
 };
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom_locate::LocatedSpan;
-use serde_json::value::Index;
+
+use error::ParseError;
+use tokenizer::Tokenizer;
+
+use crate::context::Command;
 
 mod error;
 pub mod tokenizer;
-use crate::context::Command;
-use error::ParseError;
-use tokenizer::Tokenizer;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
@@ -251,15 +251,35 @@ pub fn parse_to_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Vec<Command<'a>>
     commands
 }
 
-fn parse_set_directive_inner<'a>(tokens: &mut Tokens<'a>) -> Result<SetDirective<'a>, ParseError<'a>> {
-    if let (Some(Token {inner: TokenType::Inline(variable), ..}),
-            Some(Token {inner: TokenType::Inline(value), ..}),
-            Some(Token {inner: TokenType::Newline, ..})) = (tokens.next(), tokens.next(), tokens.next()) {
-        let (_,variable) = parse_selection_path(variable).map_err(ParseError::InvalidSelection)?;
-        if let Ok ((_, value)) = parse_selection_path(value) {
-            Ok(SetDirective{variable, value: Val::ContextRef(value)})
+fn parse_set_directive_inner<'a>(
+    tokens: &mut Tokens<'a>,
+) -> Result<SetDirective<'a>, ParseError<'a>> {
+    if let (
+        Some(Token {
+            inner: TokenType::Inline(variable),
+            ..
+        }),
+        Some(Token {
+            inner: TokenType::Inline(value),
+            ..
+        }),
+        Some(Token {
+            inner: TokenType::Newline,
+            ..
+        }),
+    ) = (tokens.next(), tokens.next(), tokens.next())
+    {
+        let (_, variable) = parse_selection_path(variable).map_err(ParseError::InvalidSelection)?;
+        if let Ok((_, value)) = parse_selection_path(value) {
+            Ok(SetDirective {
+                variable,
+                value: Val::ContextRef(value),
+            })
         } else if let Ok(literal) = json5::from_str(value) {
-            Ok(SetDirective{variable, value: Val::Literal(literal)})
+            Ok(SetDirective {
+                variable,
+                value: Val::Literal(literal),
+            })
         } else {
             Err(ParseError::InvalidValue(value))
         }
@@ -273,17 +293,6 @@ fn is_allowed_in_ident(c: char) -> bool {
 
 fn is_allowed_in_name(c: char) -> bool {
     is_allowed_in_ident(c) && !['(', ')', '.', '[', ']', '{', '}', '\'', '"', '/', '~'].contains(&c)
-}
-
-fn ends_literal(c: char) -> bool {
-    c == '`'
-}
-
-fn parse_multiline_literal_start(inp: Span) -> IResult<Span, Span> {
-    terminated(
-        alt((tag("```"), tag("```json"), tag("```json5"))),
-        alt((space1, line_ending)),
-    )(inp)
 }
 
 fn parse_selection_path(inp: &str) -> IResult<&str, SelectionPath> {
@@ -311,43 +320,6 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
     fail(inp)
 }
 
-// /// To-Directive: Starts with keyword "To" followed by at least one space.
-// /// finds valid names in backticks (\`name\`) until end of line (list of names is the callpath).
-// /// Optionally specifies required arguments as valid names preceded by 2 dashes(\`--name\`).
-// /// Callpath must be complete before the first argument, and must have at least one name in callpath before newline.
-// fn parse_to_directive(inp: Span) -> IResult<Span, ToDirective, Error<LocatedSpan<&str>>> {
-//     let (inp, start) = position(inp)?;
-//     let (inp, _) = terminated(tag("To"), space1)(inp)?;
-//     let (mut inp, (callpath, end)) = find_many_till(
-//         delimited(tag("`"), valid_name, tag("`")),
-//         alt((tag("`--"), line_ending)),
-//         inp,
-//     )?;
-//     if callpath.is_empty() {
-//         return fail(start); // no elements in callpath means invalid directive
-//     }
-//     let mut args = Vec::new();
-//     if *end.fragment() == "`--" {
-//         let (rest, arg1) = terminated(valid_name, tag("`"))(inp)?;
-//         let (rest, (otherargs, _)) = find_many_till(
-//             delimited(tag("`--"), valid_name, tag("`")),
-//             line_ending,
-//             rest,
-//         )?;
-//         args.push(arg1);
-//         args.extend(otherargs);
-//         inp = rest;
-//     }
-
-//     Ok((
-//         inp,
-//         ToDirective {
-//             callpath: callpath.into_iter().map(|e| *e.fragment()).collect(),
-//             args: args.into_iter().map(|e| *e.fragment()).collect(),
-//         },
-//     ))
-// }
-
 /// Parse the inner portion of a code-block
 /// always consumes the entire input
 /// The first word, not preceded by whitespace, is the executor
@@ -358,7 +330,7 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
 fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
     let (inp, executor) = opt(valid_name)(inp)?;
     let (inp, name) = opt(preceded(space1, valid_name))(inp)?;
-    let (mut inp, type_hint) =
+    let (inp, type_hint) =
         opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
     let (inp, annotations) = many0(preceded(space1, valid_name))(inp)?;
 
@@ -388,7 +360,6 @@ fn valid_name(inp: &str) -> IResult<&str, &str> {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     impl<'a> TokenType<'a> {

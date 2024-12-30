@@ -3,54 +3,32 @@ use std::{
     process::Output,
 };
 
-mod error;
-
-use error::ExecutionError;
 use handlebars::Handlebars;
 use serde_json::{json, Map, Value};
 
+use error::ExecutionError;
+
 use crate::parser::{CodeBlock, Selection, SelectionPath, SetDirective, Val};
 
-trait Template {
-    fn template(&self) -> &str;
-}
-
-impl<'a> Template for CodeBlock<'a> {
-    fn template(&self) -> &str {
-        self.code
-    }
-}
-
-/// AppContext serves as the anchor for an invocation of recipe
-#[derive(Debug, Default, PartialEq)]
-pub struct AppContext<'a> {
-    commands: Commands<'a>,
-    ctx: Context,
-}
-impl<'a> AppContext<'a> {
-    pub fn new() -> Self {
-        AppContext {
-            commands: Commands {
-                inner: BTreeMap::new(),
-            },
-            ctx: Context {
-                root: json!({}),
-                executors: Executors::default(),
-            },
-        }
-    }
-    pub fn register_command(&mut self, name: String, command: Command<'a>) {
-        self.commands.inner.insert(name, command);
-    }
-    pub fn register_executor(&mut self, name: &str, executor: Executor) {
-        self.ctx.executors.inner.insert(name.to_owned(), executor);
-    }
-}
+mod error;
 
 /// Wraps all the loaded Commands
 #[derive(Debug, Default, PartialEq)]
 pub struct Commands<'a> {
     inner: BTreeMap<String, Command<'a>>,
+}
+impl <'a> Commands <'a> {
+    pub fn new() -> Self {
+        Commands {
+            inner: BTreeMap::new()
+        }
+    }
+    pub fn register_command(&mut self, name: String, command: Command<'a>) {
+        self.inner.insert(name, command);
+    }
+    pub fn get(&self, name: &str) -> Option<&Command> {
+        self.inner.get(name)
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -75,7 +53,7 @@ impl Executors {
 }
 
 /// Something that can execute a script of a certain type
-/// May need tweaking to accomodate for different types of scripts
+/// May need tweaking to accommodate for different types of scripts
 #[derive(Debug, Clone, PartialEq)]
 pub struct Executor {
     program: String,
@@ -104,27 +82,47 @@ impl Executor {
 }
 
 /// Wraps the context passed to each command-invocation
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct Context {
     /// the root of the template context
     root: serde_json::Value,
     /// the loaded Executors
     executors: Executors,
 }
+
+impl Default for Context {
+    fn default() -> Self {
+        Context {
+            root: json!({}),
+            executors: Executors::default()
+        }
+    }
+}
 impl Context {
-    fn map_mut(&mut self) -> &mut Map<String, Value> {
+    /// get a mutable reference to the base context-object
+    pub fn map_mut(&mut self) -> &mut Map<String, Value> {
         self.root.as_object_mut().expect("root is always an object")
     }
-    fn map(&self) -> &Map<String, Value> {
+
+    /// get a shared reference to the based context-object
+    pub fn map(&self) -> &Map<String, Value> {
         self.root.as_object().expect("root is always an object")
     }
-    fn get(&self, selection_path: &SelectionPath) -> Option<&Value> {
+
+    /// get a shared reference to a value corresponding to a selection-path, or None if it is not found.
+    /// Note that this value is still permitted to be serde_json::Value::Null
+    pub fn get(&self, selection_path: &SelectionPath) -> Option<&Value> {
         self.root.pointer(&selection_path.json_pointer())
     }
-    fn get_mut(&mut self, selection_path: &SelectionPath) -> Option<&mut Value> {
+
+    /// get a mutable reference to a value corresponding to a selection-path, or None if it is not found.
+    /// Note that this value is still permitted to be serde_json::Value::Null
+    pub fn get_mut(&mut self, selection_path: &SelectionPath) -> Option<&mut Value> {
         self.root.pointer_mut(&selection_path.json_pointer())
     }
-    fn register_execution(&mut self, output: Output, type_hint: Option<&str>) {
+
+    /// The actions to be taken after a command has been executed against this context-instance
+    pub fn register_execution(&mut self, output: Output, _type_hint: Option<&str>) {
         //TODO: implement type converters
         let stdout =
             json!(String::from_utf8(output.stdout).unwrap_or("TODO: Not UTF8!".to_owned()));
@@ -137,7 +135,7 @@ impl Context {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 /// Represents a single loaded command
 pub enum Command<'a> {
     Composite(Vec<Command<'a>>),
@@ -145,7 +143,7 @@ pub enum Command<'a> {
     SetDirective(SetDirective<'a>),
 }
 impl<'a> Command<'a> {
-    fn execute(&self, ctx: &mut Context) -> Result<(), error::ExecutionError> {
+    pub fn execute(&self, ctx: &mut Context) -> Result<(), error::ExecutionError> {
         match self {
             Self::Composite(commands) => {
                 for cmd in commands {
@@ -166,7 +164,7 @@ fn execute_code_block(code_block: &CodeBlock, ctx: &mut Context) -> Result<(), E
     let handlebars = Handlebars::new();
     let code = handlebars
         .render_template(template, &ctx.root)
-        .map_err(|e| ExecutionError::TemplateError)?;
+        .map_err(|_e| ExecutionError::TemplateError)?;
     let output = ctx.executors.run(executor, code)?;
     ctx.register_execution(output, code_block.type_hint);
     Ok(())

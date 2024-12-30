@@ -12,7 +12,6 @@ use nom::{
 };
 use nom_locate::position;
 
-
 use super::{Heading, Keyword, Link, Span, Token, TokenType};
 
 #[derive(Debug)]
@@ -55,9 +54,7 @@ impl<'a> Iterator for Tokenizer<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         if let Ok((rest, found)) = find_next(any_token)(self.src) {
             match found.inner {
-                TokenType::Heading(Heading { level, .. }) if level <= self.scope => {
-                    None
-                }
+                TokenType::Heading(Heading { level, .. }) if level <= self.scope => None,
                 _ => {
                     self.src = rest;
                     Some(found)

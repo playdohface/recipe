@@ -1,4 +1,3 @@
-use thiserror::Error;
 use super::{Span, Token, TokenType};
 
 #[derive(Debug)]

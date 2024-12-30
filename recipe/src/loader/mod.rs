@@ -1,31 +1,28 @@
-mod error;
-
-use crate::context::Command;
-use crate::parser::{parse_to_directive_inner, Token};
-use crate::{
-    context::AppContext,
-    parser::{TokenType, Tokens},
-};
+use convert_case::{Case, Casing};
 use itertools::Itertools;
 
+use crate::context::{Command, Commands};
+use crate::parser::{Tokens, TokenType};
+use crate::parser::parse_to_directive_inner;
+
 /// Load the entire AppContext
-pub fn load(root_path: &str) -> anyhow::Result<AppContext> {
+pub fn load(root_path: &str) -> anyhow::Result<Commands> {
     let recipe = load_file(root_path)?;
     let mut tokens = Tokens::new();
     tokens.load(recipe, root_path, None);
-    let mut app_context = AppContext::new();
+    let mut commands = Commands::new();
     while let Some(token) = tokens.next() {
         use crate::parser::Keyword::*;
         use TokenType::*;
         match token.inner() {
             Link(link) => load_link(&mut tokens, link.path),
-            Block(block) => load_block(&mut tokens, &mut app_context),
-            Keyword(To) => load_to_directive(&mut tokens, &mut app_context),
-            Keyword(keyword) => todo!(),
+            Block(code) => load_block(&mut tokens, &mut commands, code),
+            Keyword(To) => load_to_directive(&mut tokens, &mut commands),
+            Keyword(_keyword) => todo!(),
             Inline(_) | Heading(_) | Newline => continue,
         }
     }
-    Ok(app_context)
+    Ok(commands)
 }
 
 fn load_link<'a>(tokens: &mut Tokens<'a>, origin_path: &'a str) {
@@ -52,40 +49,32 @@ pub fn load_file(path: &str) -> Result<String, std::io::Error> {
     std::fs::read_to_string(path)
 }
 
-fn load_block(tokens: &mut Tokens, app_context: &mut AppContext) {
+fn load_block(_tokens: &mut Tokens, _commands: &mut Commands, _code: &str) {
     todo!()
 }
 
-fn load_to_directive<'a>(tokens: &mut Tokens<'a>, app_context: &mut AppContext<'a>) {
+fn load_to_directive<'a>(tokens: &mut Tokens<'a>, commands: &mut Commands<'a>) {
     let mut names = Vec::new();
     for token in tokens.by_ref() {
         match token.inner() {
             TokenType::Inline(inline) => {
                 names.push(*inline);
-            },
+            }
             TokenType::Newline => break,
             _ => {
                 //TODO Output a warning. Do we break or continue here?
                 continue;
             }
-
         }
     }
-    let name = names.iter().join(" ");
-    if name.is_empty()  {
+    let name = names.iter().map(|n|n.to_case(Case::Kebab)).join("-");
+    if name.is_empty() {
 
         //return; //TODO errors/warnings
     }
-    let commands = parse_to_directive_inner(tokens);
-    app_context.register_command(name, Command::Composite(commands));
+    let parsed_commands = parse_to_directive_inner(tokens);
+    commands.register_command(name, Command::Composite(parsed_commands));
 }
 
 #[cfg(test)]
-mod tests {
-    use std::fs::File;
-    use std::io::Write;
-
-    use tempfile::{tempdir, TempDir};
-
-    use super::*;
-}
+mod tests {}
