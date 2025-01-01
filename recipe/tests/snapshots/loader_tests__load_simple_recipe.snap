@@ -1,0 +1,19 @@
+---
+source: tests/loader_tests.rs
+expression: loaded
+snapshot_kind: text
+---
+inner:
+  bake-cake:
+    Composite:
+      - SetDirective:
+          variable:
+            - Key: topping
+          value:
+            Literal: cherry
+      - CodeBlock:
+          executor: sh
+          name: ~
+          type_hint: ~
+          annotations: []
+          code: "echo {{ topping }}\n"

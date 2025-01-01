@@ -1,0 +1,48 @@
+---
+source: tests/tokenizer_tests.rs
+expression: tokens
+snapshot_kind: text
+---
+- start: 0
+  end: 12
+  inner:
+    Heading:
+      level: 1
+      text: Heading 1
+- start: 21
+  end: 22
+  inner: Newline
+- start: 25
+  end: 96
+  inner:
+    Block: "rust\n### Not a heading\nfn main() {\n    println!(\"Hello, World!\");\n}\n"
+- start: 96
+  end: 97
+  inner: Newline
+- start: 111
+  end: 112
+  inner: Newline
+- start: 112
+  end: 139
+  inner:
+    Link:
+      text: Link
+      path: "https://example.com"
+- start: 139
+  end: 140
+  inner: Newline
+- start: 140
+  end: 144
+  inner:
+    Keyword: Set
+- start: 145
+  end: 149
+  inner:
+    Inline: foo
+- start: 154
+  end: 158
+  inner:
+    Inline: bar
+- start: 158
+  end: 159
+  inner: Newline

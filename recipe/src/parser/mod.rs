@@ -1,17 +1,18 @@
 use std::collections::HashSet;
 
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{digit1, line_ending, space0, space1},
     combinator::{fail, verify},
     error::VerboseError,
-    IResult,
     sequence::{delimited, preceded},
+    IResult,
 };
-use nom::combinator::opt;
-use nom::multi::many0;
 use nom_locate::LocatedSpan;
+use serde::{Deserialize, Serialize};
 
 use error::ParseError;
 use tokenizer::Tokenizer;
@@ -23,13 +24,13 @@ pub mod tokenizer;
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Heading<'a> {
     pub level: usize,
     pub text: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodeBlock<'a> {
     pub executor: Option<&'a str>,
     pub name: Option<&'a str>,
@@ -51,19 +52,13 @@ impl<'a> TryFrom<Token<'a>> for CodeBlock<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Link<'a> {
-    text: &'a str,
+    pub text: &'a str,
     pub path: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ToDirective<'a> {
-    callpath: Vec<&'a str>,
-    args: Vec<&'a str>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Selection<'a> {
     Index(usize),
     Key(&'a str),
@@ -77,8 +72,8 @@ impl<'a> Selection<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelectionPath<'a>(pub Vec<Selection<'a>>);
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectionPath<'a>(#[serde(borrow)] pub Vec<Selection<'a>>);
 impl<'a> SelectionPath<'a> {
     /// the selection as a JSON-Pointer per [RFC6901](https://datatracker.ietf.org/doc/html/rfc6901)
     pub fn json_pointer(&self) -> String {
@@ -106,9 +101,9 @@ impl<'a> SelectionPath<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Val<'a> {
-    ContextRef(SelectionPath<'a>),
+    ContextRef(#[serde(borrow)] SelectionPath<'a>),
     Literal(serde_json::Value),
 }
 impl<'a> TryFrom<&TokenType<'a>> for Val<'a> {
@@ -134,23 +129,24 @@ impl<'a> TryFrom<&TokenType<'a>> for Val<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetDirective<'a> {
+    #[serde(borrow)]
     pub variable: SelectionPath<'a>,
     pub value: Val<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Keyword {
     To,
     Set,
     Execute,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Token<'a> {
-    start: Span<'a>,
-    end: Span<'a>,
+    start: usize,
+    end: usize,
     inner: TokenType<'a>,
 }
 impl<'a> Token<'a> {
@@ -165,7 +161,7 @@ impl<'a> Token<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum TokenType<'a> {
     Heading(Heading<'a>),
     Block(&'a str),
@@ -193,7 +189,7 @@ impl<'a> Tokens<'a> {
             heading_slug.unwrap_or_default()
         )) {
             //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
-            //TODO: we are also prepending a newline here to avoid missing headings at the start of the file
+            //TODO: we are also prepending a newline here to avoid missing headings at the start of the file, but this messes with our offsets in Token
             let mut tokenizer = Tokenizer::from_str(format!("\n{src}").leak(), file_path);
             if let Some(heading_slug) = heading_slug {
                 tokenizer.scope_to_heading(heading_slug);
@@ -330,8 +326,7 @@ fn parse_selection(inp: &str) -> IResult<&str, Selection> {
 fn parse_code_block(inp: &str) -> IResult<&str, CodeBlock> {
     let (inp, executor) = opt(valid_name)(inp)?;
     let (inp, name) = opt(preceded(space1, valid_name))(inp)?;
-    let (inp, type_hint) =
-        opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
+    let (inp, type_hint) = opt(preceded(space0, delimited(tag("("), valid_name, tag(")"))))(inp)?;
     let (inp, annotations) = many0(preceded(space1, valid_name))(inp)?;
 
     let (code, _) = preceded(space0, line_ending)(inp)?;
@@ -365,19 +360,11 @@ mod tests {
     impl<'a> TokenType<'a> {
         fn mock_token(self) -> Token<'a> {
             Token {
-                start: "".into(),
-                end: "".into(),
+                start: 0,
+                end: 0,
                 inner: self,
             }
         }
-    }
-
-    fn same_fragment(a: Span, b: Span) -> bool {
-        *a.fragment() == *b.fragment()
-    }
-
-    fn same_opt_fragment(a: Option<Span>, b: Option<Span>) -> bool {
-        a.map(|s| *s.fragment()) == b.map(|s| *s.fragment())
     }
 
     impl<'a> CodeBlock<'a> {

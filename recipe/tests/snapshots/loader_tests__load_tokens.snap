@@ -1,0 +1,48 @@
+---
+source: tests/loader_tests.rs
+expression: "tokens.collect::<Vec<_>>()"
+snapshot_kind: text
+---
+- start: 0
+  end: 13
+  inner:
+    Heading:
+      level: 1
+      text: Heading 1
+- start: 13
+  end: 16
+  inner:
+    Keyword: To
+- start: 17
+  end: 22
+  inner:
+    Inline: bake
+- start: 26
+  end: 31
+  inner:
+    Inline: cake
+- start: 31
+  end: 32
+  inner: Newline
+- start: 32
+  end: 36
+  inner:
+    Keyword: Set
+- start: 37
+  end: 41
+  inner:
+    Inline: foo
+- start: 46
+  end: 52
+  inner:
+    Inline: "\"bar\""
+- start: 52
+  end: 53
+  inner: Newline
+- start: 56
+  end: 81
+  inner:
+    Block: "sh\necho {{ topping }}\n"
+- start: 81
+  end: 82
+  inner: Newline

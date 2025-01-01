@@ -12,7 +12,9 @@ json5 = "0.4.1"
 anyhow = "1.0.93"
 handlebars = "6.2.0"
 thiserror = "2.0.9"
-itertools = "0.13.0"
+itertools = "0.14.0"
+serde = { version = "1.0.217", features = ["derive"] }
 
 [dev-dependencies]
+insta = { version = "1.41.1", features = ["yaml"] }
 tempfile = "3.14.0"

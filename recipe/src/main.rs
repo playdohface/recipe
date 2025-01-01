@@ -11,9 +11,16 @@ fn main() {
         if let Some(command) = commands.get(&args.join("-").to_case(Case::Kebab)) {
             let mut ctx = Context::default();
             args_to_register.reverse();
-            ctx.map_mut().insert("args".to_string(), args_to_register.into());
+            ctx.map_mut()
+                .insert("args".to_string(), args_to_register.into());
             let _res = command.execute(&mut ctx);
-            print!("{}", ctx.map().get("output").and_then(|c|c.as_str()).unwrap_or_default());
+            print!(
+                "{}",
+                ctx.map()
+                    .get("output")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or_default()
+            );
             break;
         } else {
             args_to_register.push(args.pop().expect("by loop invariant"));

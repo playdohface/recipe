@@ -1,9 +1,7 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    process::Output,
-};
+use std::{collections::HashMap, process::Output};
 
 use handlebars::Handlebars;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use error::ExecutionError;
@@ -13,14 +11,15 @@ use crate::parser::{CodeBlock, Selection, SelectionPath, SetDirective, Val};
 mod error;
 
 /// Wraps all the loaded Commands
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Commands<'a> {
-    inner: BTreeMap<String, Command<'a>>,
+    #[serde(borrow)]
+    inner: HashMap<String, Command<'a>>,
 }
-impl <'a> Commands <'a> {
+impl<'a> Commands<'a> {
     pub fn new() -> Self {
         Commands {
-            inner: BTreeMap::new()
+            inner: HashMap::new(),
         }
     }
     pub fn register_command(&mut self, name: String, command: Command<'a>) {
@@ -31,7 +30,7 @@ impl <'a> Commands <'a> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Executors {
     inner: HashMap<String, Executor>,
 }
@@ -54,7 +53,7 @@ impl Executors {
 
 /// Something that can execute a script of a certain type
 /// May need tweaking to accommodate for different types of scripts
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Executor {
     program: String,
     args: Vec<String>,
@@ -82,7 +81,7 @@ impl Executor {
 }
 
 /// Wraps the context passed to each command-invocation
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub struct Context {
     /// the root of the template context
     root: serde_json::Value,
@@ -94,7 +93,7 @@ impl Default for Context {
     fn default() -> Self {
         Context {
             root: json!({}),
-            executors: Executors::default()
+            executors: Executors::default(),
         }
     }
 }
@@ -135,10 +134,11 @@ impl Context {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 /// Represents a single loaded command
 pub enum Command<'a> {
     Composite(Vec<Command<'a>>),
+    #[serde(borrow)]
     CodeBlock(CodeBlock<'a>),
     SetDirective(SetDirective<'a>),
 }

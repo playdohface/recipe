@@ -2,8 +2,8 @@ use convert_case::{Case, Casing};
 use itertools::Itertools;
 
 use crate::context::{Command, Commands};
-use crate::parser::{Tokens, TokenType};
 use crate::parser::parse_to_directive_inner;
+use crate::parser::{TokenType, Tokens};
 
 /// Load the entire AppContext
 pub fn load(root_path: &str) -> anyhow::Result<Commands> {
@@ -67,7 +67,7 @@ fn load_to_directive<'a>(tokens: &mut Tokens<'a>, commands: &mut Commands<'a>) {
             }
         }
     }
-    let name = names.iter().map(|n|n.to_case(Case::Kebab)).join("-");
+    let name = names.iter().map(|n| n.to_case(Case::Kebab)).join("-");
     if name.is_empty() {
 
         //return; //TODO errors/warnings

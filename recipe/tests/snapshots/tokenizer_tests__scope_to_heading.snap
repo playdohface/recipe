@@ -1,0 +1,19 @@
+---
+source: tests/tokenizer_tests.rs
+expression: tokens
+snapshot_kind: text
+---
+- start: 76
+  end: 93
+  inner:
+    Inline: inside heading 2
+- start: 93
+  end: 108
+  inner:
+    Heading:
+      level: 3
+      text: Heading 3
+- start: 109
+  end: 126
+  inner:
+    Inline: inside heading 3

@@ -97,7 +97,7 @@ fn any_token(inp: Span) -> IResult<Span, Token> {
 
 // Parse a markdown heading
 fn parse_heading(inp: Span) -> IResult<Span, Token> {
-    let (inp, start) = position(inp)?;
+    let start = position(inp)?.1.location_offset();
     let (inp, level) = preceded(terminated(line_ending, space0), many1_count(char('#')))(inp)?;
     let (inp, _) = take_till(|c: char| !c.is_whitespace())(inp)?;
     let (inp, text) = is_not("\r\n")(inp)?;
@@ -111,7 +111,7 @@ fn parse_heading(inp: Span) -> IResult<Span, Token> {
         inp,
         Token {
             start,
-            end: position(inp)?.1,
+            end: position(inp)?.1.location_offset(),
             inner: TokenType::Heading(heading),
         },
     ))
@@ -123,8 +123,8 @@ fn parse_block(inp: Span) -> IResult<Span, Token> {
     Ok((
         rest,
         Token {
-            start: position(res)?.1,
-            end: position(rest)?.1,
+            start: position(res)?.1.location_offset(),
+            end: position(rest)?.1.location_offset(),
             inner: TokenType::Block(res.fragment()),
         },
     ))
@@ -139,8 +139,8 @@ fn parse_inline(inp: Span) -> IResult<Span, Token> {
     Ok((
         rest,
         Token {
-            start: position(res)?.1,
-            end: position(rest)?.1,
+            start: position(res)?.1.location_offset(),
+            end: position(rest)?.1.location_offset(),
             inner: TokenType::Inline(res.fragment()),
         },
     ))
@@ -148,7 +148,7 @@ fn parse_inline(inp: Span) -> IResult<Span, Token> {
 
 /// Parse a Markdown-link
 fn parse_link(inp: Span) -> IResult<Span, Token> {
-    let (inp, start) = position(inp)?;
+    let start = position(inp)?.1.location_offset();
     let (inp, text) = delimited(tag("["), take_while(is_allowed_in_link_text), tag("]"))(inp)?;
     let (inp, path) = delimited(tag("("), take_while(is_allowed_in_link_path), tag(")"))(inp)?;
     let link = TokenType::Link(Link {
@@ -159,7 +159,7 @@ fn parse_link(inp: Span) -> IResult<Span, Token> {
         inp,
         Token {
             start,
-            end: position(inp)?.1,
+            end: position(inp)?.1.location_offset(),
             inner: link,
         },
     ))
@@ -195,8 +195,8 @@ fn parse_keyword(inp: Span) -> IResult<Span, Token> {
     Ok((
         rest,
         Token {
-            start: position(res)?.1,
-            end: position(rest)?.1,
+            start: position(res)?.1.location_offset(),
+            end: position(rest)?.1.location_offset(),
             inner: TokenType::Keyword(keyword),
         },
     ))
@@ -207,8 +207,8 @@ fn parse_newline(inp: Span) -> IResult<Span, Token> {
     Ok((
         rest,
         Token {
-            start: position(inp)?.1,
-            end: position(rest)?.1,
+            start: position(inp)?.1.location_offset(),
+            end: position(rest)?.1.location_offset(),
             inner: TokenType::Newline,
         },
     ))
@@ -216,81 +216,9 @@ fn parse_newline(inp: Span) -> IResult<Span, Token> {
 
 #[cfg(test)]
 mod tests {
-    use nom::Offset;
     use nom_locate::LocatedSpan;
 
     use super::*;
-
-    #[test]
-    fn test_scope_to_heading() {
-        let src = r#"
-# Heading 1
-`inside heading 1`
-## Heading 2 please ScopeMe-to_ThisHeading
-`inside heading 2`
-### Heading 3
-`inside heading 3`
-## Another heading
-`inside another heading`
-"#;
-        let mut tokenizer = Tokenizer::from_str(src, "Mock.md");
-        tokenizer.scope_to_heading("heading-2-please-scope-me-to-this-heading");
-        let tokens: Vec<TokenType> = tokenizer.map(|t| t.inner).collect();
-        assert_eq!(
-            tokens,
-            vec![
-                TokenType::Inline("inside heading 2"),
-                TokenType::Heading(Heading {
-                    level: 3,
-                    text: "Heading 3"
-                }),
-                TokenType::Inline("inside heading 3"),
-            ]
-        );
-    }
-
-    #[test]
-    fn test_tokenizer() {
-        let src = r#"
-#Heading 1
-Some text
-```rust
-### Not a heading
-fn main() {
-    println!("Hello, World!");
-}
-```
-Some more text
-[Link](https://example.com)
-Set `foo` to `bar`
-"#;
-        let tokenizer = Tokenizer::from_str(src, "Mock.md");
-        let tokens: Vec<TokenType> = tokenizer.map(|t| t.inner).collect();
-        assert_eq!(
-            tokens,
-            vec![
-                TokenType::Heading(Heading {
-                    level: 1,
-                    text: "Heading 1"
-                }),
-                TokenType::Newline,
-                TokenType::Block(
-                    "rust\n### Not a heading\nfn main() {\n    println!(\"Hello, World!\");\n}\n"
-                ),
-                TokenType::Newline,
-                TokenType::Newline,
-                TokenType::Link(Link {
-                    text: "Link",
-                    path: "https://example.com"
-                }),
-                TokenType::Newline,
-                TokenType::Keyword(Keyword::Set),
-                TokenType::Inline("foo".into()),
-                TokenType::Inline("bar".into()),
-                TokenType::Newline,
-            ]
-        );
-    }
 
     #[test]
     fn test_find_next() {
@@ -309,10 +237,6 @@ Set `foo` to `bar`
             text: "How To Bake a Cake",
         });
         let (rest, parsed) = assert_parse_token_with_inner(&undertest, parse_heading, expected);
-        assert_eq!(
-            parsed.start.offset(&rest),
-            undertest.len() - rest.fragment().len()
-        );
         assert_eq!(*rest.fragment(), "and live to tell the tale");
     }
 
