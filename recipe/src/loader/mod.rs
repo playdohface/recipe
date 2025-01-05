@@ -1,12 +1,14 @@
+use std::path::Path;
+
 use convert_case::{Case, Casing};
 use itertools::Itertools;
 
 use crate::context::{Command, Commands};
+use crate::parser::{Tokens, TokenType};
 use crate::parser::parse_to_directive_inner;
-use crate::parser::{TokenType, Tokens};
 
-/// Load the entire AppContext
-pub fn load(root_path: &str) -> anyhow::Result<Commands> {
+/// Load the Context
+pub fn load(root_path: &Path) -> anyhow::Result<Commands> {
     let recipe = load_file(root_path)?;
     let mut tokens = Tokens::new();
     tokens.load(recipe, root_path, None);
@@ -36,16 +38,16 @@ fn load_link<'a>(tokens: &mut Tokens<'a>, origin_path: &'a str) {
         _ => return,
     };
     if file_path.is_empty() {
-        file_path = tokens.current_path().unwrap_or_default();
+        file_path = tokens.current_path().and_then(|p|p.to_str()).unwrap_or_default();
     }
     if let Ok(contents) = load_file(file_path) {
-        tokens.load(contents, file_path, heading_slug);
+        tokens.load(contents, file_path.as_ref(), heading_slug);
     }
 }
 
 /// Resolve a path and return the contents of the file
 /// TODO - There will be relative paths and default locations
-pub fn load_file(path: &str) -> Result<String, std::io::Error> {
+pub fn load_file(path: impl AsRef<Path>) -> Result<String, std::io::Error> {
     std::fs::read_to_string(path)
 }
 

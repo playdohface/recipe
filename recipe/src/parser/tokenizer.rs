@@ -1,4 +1,5 @@
 use std::ops::RangeFrom;
+use std::path::Path;
 
 use convert_case::{Case, Casing};
 use nom::{
@@ -6,9 +7,9 @@ use nom::{
     bytes::complete::{is_not, tag, take_till, take_while},
     character::complete::{char, line_ending, space0, space1},
     combinator::fail,
-    multi::many1_count,
-    sequence::{delimited, preceded, terminated},
-    IResult, InputLength, Parser, Slice,
+    InputLength,
+    IResult,
+    multi::many1_count, Parser, sequence::{delimited, preceded, terminated}, Slice,
 };
 use nom_locate::position;
 
@@ -17,13 +18,13 @@ use super::{Heading, Keyword, Link, Span, Token, TokenType};
 #[derive(Debug)]
 pub struct Tokenizer<'a> {
     /// The path being tokenized
-    pub origin_path: &'a str,
+    pub origin_path: &'a Path,
     src: Span<'a>,
     scope: usize,
 }
 
 impl<'a> Tokenizer<'a> {
-    pub fn from_str(src: &'a str, path: &'a str) -> Self {
+    pub fn from_str(src: &'a str, path: &'a Path) -> Self {
         Tokenizer {
             origin_path: path,
             src: src.into(),

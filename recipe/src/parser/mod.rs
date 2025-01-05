@@ -1,16 +1,17 @@
 use std::collections::HashSet;
+use std::path::Path;
 
-use nom::combinator::opt;
-use nom::multi::many0;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{digit1, line_ending, space0, space1},
     combinator::{fail, verify},
     error::VerboseError,
-    sequence::{delimited, preceded},
     IResult,
+    sequence::{delimited, preceded},
 };
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom_locate::LocatedSpan;
 use serde::{Deserialize, Serialize};
 
@@ -182,10 +183,10 @@ impl<'a> Tokens<'a> {
             loaded_paths: HashSet::new(),
         }
     }
-    pub fn load(&mut self, src: String, file_path: &'a str, heading_slug: Option<&'a str>) {
+    pub fn load(&mut self, src: String, file_path: &'a Path, heading_slug: Option<&'a str>) {
         if self.loaded_paths.insert(format!(
             "{}#{}",
-            file_path,
+            file_path.display(),
             heading_slug.unwrap_or_default()
         )) {
             //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
@@ -197,7 +198,7 @@ impl<'a> Tokens<'a> {
             self.tokens.push(tokenizer);
         }
     }
-    pub fn current_path(&self) -> Option<&'a str> {
+    pub fn current_path(&self) -> Option<&'a Path> {
         self.tokens.last().map(|t| t.origin_path)
     }
 }

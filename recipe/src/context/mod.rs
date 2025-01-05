@@ -38,6 +38,7 @@ impl Default for Executors {
     fn default() -> Self {
         let mut inner = HashMap::new();
         inner.insert("sh".to_owned(), Executor::shell());
+        inner.insert("node".to_string(), Executor::node());
         Executors { inner }
     }
 }
@@ -70,6 +71,12 @@ impl Executor {
         Executor {
             program: "/bin/sh".to_owned(),
             args: vec!["-c".to_owned()],
+        }
+    }
+    pub fn node() -> Self {
+        Executor {
+            program: "node".to_string(),
+            args: vec!["--eval".to_string()],
         }
     }
     fn generic(executable: &str) -> Self {

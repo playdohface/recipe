@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 
 use insta::assert_yaml_snapshot;
 use tempfile::{tempdir, TempDir};
@@ -7,7 +8,7 @@ use tempfile::{tempdir, TempDir};
 use recipe::context::{Command, Commands};
 use recipe::loader::load;
 use recipe::parser::{
-    CodeBlock, Heading, Keyword, Selection, SelectionPath, SetDirective, TokenType, Tokens, Val,
+    CodeBlock, Heading, Keyword, Selection, SelectionPath, SetDirective, Tokens, TokenType, Val,
 };
 
 #[test]
@@ -36,17 +37,17 @@ echo {{ topping }}
 ```
 "#;
     let mut tokens = Tokens::new();
-    tokens.load(contents.to_string(), "foo", None);
+    tokens.load(contents.to_string(), Path::new("foo"), None);
     assert_yaml_snapshot!(tokens.collect::<Vec<_>>());
 }
 
-fn write_temp_file(filename: &str, contents: &str) -> (String, TempDir, File) {
+fn write_temp_file(filename: &str, contents: &str) -> (PathBuf, TempDir, File) {
     let dir = tempdir().unwrap();
     let file_path = dir.path().join(filename);
     let mut file = File::create(&file_path).unwrap();
     write!(file, "{}", contents).unwrap();
     (
-        file_path.as_os_str().to_str().unwrap().to_owned(),
+        file_path,
         dir,
         file,
     )

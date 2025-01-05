@@ -10,8 +10,8 @@ Here is an example:
 To `greet` a `person`:
 
 Set `name` to `args[0]`
-```sh
-echo "Hello, {{ name }}!"
+```node
+console.log("Hello, {{ name }}!")
 ```
 
 This is whats known as a Recipe. 
