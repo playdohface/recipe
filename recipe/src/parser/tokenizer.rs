@@ -7,9 +7,9 @@ use nom::{
     bytes::complete::{is_not, tag, take_till, take_while},
     character::complete::{char, line_ending, space0, space1},
     combinator::fail,
-    InputLength,
-    IResult,
-    multi::many1_count, Parser, sequence::{delimited, preceded, terminated}, Slice,
+    multi::many1_count,
+    sequence::{delimited, preceded, terminated},
+    IResult, InputLength, Parser, Slice,
 };
 use nom_locate::position;
 

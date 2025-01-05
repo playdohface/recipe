@@ -1,3 +1,4 @@
-fn main() {
-    recipe::cli::run();
+fn main() -> anyhow::Result<()> {
+    recipe::cli::run()?;
+    Ok(())
 }

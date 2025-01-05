@@ -1,17 +1,17 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use nom::combinator::opt;
+use nom::multi::many0;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_while, take_while1},
     character::complete::{digit1, line_ending, space0, space1},
     combinator::{fail, verify},
     error::VerboseError,
-    IResult,
     sequence::{delimited, preceded},
+    IResult,
 };
-use nom::combinator::opt;
-use nom::multi::many0;
 use nom_locate::LocatedSpan;
 use serde::{Deserialize, Serialize};
 

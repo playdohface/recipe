@@ -4,8 +4,8 @@ use convert_case::{Case, Casing};
 use itertools::Itertools;
 
 use crate::context::{Command, Commands};
-use crate::parser::{Tokens, TokenType};
 use crate::parser::parse_to_directive_inner;
+use crate::parser::{TokenType, Tokens};
 
 /// Load the Context
 pub fn load(root_path: &Path) -> anyhow::Result<Commands> {
@@ -38,7 +38,10 @@ fn load_link<'a>(tokens: &mut Tokens<'a>, origin_path: &'a str) {
         _ => return,
     };
     if file_path.is_empty() {
-        file_path = tokens.current_path().and_then(|p|p.to_str()).unwrap_or_default();
+        file_path = tokens
+            .current_path()
+            .and_then(|p| p.to_str())
+            .unwrap_or_default();
     }
     if let Ok(contents) = load_file(file_path) {
         tokens.load(contents, file_path.as_ref(), heading_slug);

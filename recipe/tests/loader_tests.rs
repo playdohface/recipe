@@ -8,7 +8,7 @@ use tempfile::{tempdir, TempDir};
 use recipe::context::{Command, Commands};
 use recipe::loader::load;
 use recipe::parser::{
-    CodeBlock, Heading, Keyword, Selection, SelectionPath, SetDirective, Tokens, TokenType, Val,
+    CodeBlock, Heading, Keyword, Selection, SelectionPath, SetDirective, TokenType, Tokens, Val,
 };
 
 #[test]
@@ -46,9 +46,5 @@ fn write_temp_file(filename: &str, contents: &str) -> (PathBuf, TempDir, File) {
     let file_path = dir.path().join(filename);
     let mut file = File::create(&file_path).unwrap();
     write!(file, "{}", contents).unwrap();
-    (
-        file_path,
-        dir,
-        file,
-    )
+    (file_path, dir, file)
 }
