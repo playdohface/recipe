@@ -1,7 +1,9 @@
+use std::path::Path;
+
 use insta::assert_yaml_snapshot;
 
-use recipe::parser::tokenizer::Tokenizer;
 use recipe::parser::{Heading, Keyword, Link, TokenType};
+use recipe::parser::tokenizer::Tokenizer;
 
 #[test]
 fn test_scope_to_heading() {
@@ -15,7 +17,7 @@ fn test_scope_to_heading() {
 ## Another heading
 `inside another heading`
 "#;
-    let mut tokenizer = Tokenizer::from_str(src, "Mock.md");
+    let mut tokenizer = Tokenizer::from_str(src, Path::new("Mock.md"));
     tokenizer.scope_to_heading("heading-2-please-scope-me-to-this-heading");
     let tokens: Vec<_> = tokenizer.collect();
     assert_yaml_snapshot!(tokens);
@@ -36,7 +38,7 @@ Some more text
 [Link](https://example.com)
 Set `foo` to `bar`
 "#;
-    let tokenizer = Tokenizer::from_str(src, "Mock.md");
+    let tokenizer = Tokenizer::from_str(src, Path::new("Mock.md"));
     let tokens: Vec<_> = tokenizer.collect();
     assert_yaml_snapshot!(tokens);
 }
