@@ -65,7 +65,7 @@ impl Executor {
             .args(&self.args)
             .arg(&code)
             .output()
-            .map_err(|e| ExecutionError::ExecutorFailed((self.clone(), e)))
+            .map_err(|e| ExecutionError::ExecutorFailed(self.clone(), e))
     }
     pub fn shell() -> Self {
         Executor {
