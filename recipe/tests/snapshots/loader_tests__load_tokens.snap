@@ -4,45 +4,45 @@ expression: "tokens.collect::<Vec<_>>()"
 snapshot_kind: text
 ---
 - start: 0
-  end: 13
+  end: 12
   inner:
     Heading:
       level: 1
       text: Heading 1
-- start: 13
-  end: 16
+- start: 12
+  end: 15
   inner:
     Keyword: To
-- start: 17
-  end: 22
+- start: 16
+  end: 21
   inner:
     Inline: bake
-- start: 26
-  end: 31
+- start: 25
+  end: 30
   inner:
     Inline: cake
-- start: 31
-  end: 32
+- start: 30
+  end: 31
   inner: Newline
-- start: 32
-  end: 36
+- start: 31
+  end: 35
   inner:
     Keyword: Set
-- start: 37
-  end: 41
+- start: 36
+  end: 40
   inner:
     Inline: foo
-- start: 46
-  end: 52
+- start: 45
+  end: 51
   inner:
     Inline: "\"bar\""
-- start: 52
-  end: 53
+- start: 51
+  end: 52
   inner: Newline
-- start: 56
-  end: 81
+- start: 55
+  end: 80
   inner:
     Block: "sh\necho {{ topping }}\n"
-- start: 81
-  end: 82
+- start: 80
+  end: 81
   inner: Newline

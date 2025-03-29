@@ -189,9 +189,10 @@ impl<'a> Tokens<'a> {
             file_path.display(),
             heading_slug.unwrap_or_default()
         )) {
-            //TODO: we may want to tie the lifetime of the loaded files to the lifetime of the Tokens struct or Tokenizer instead of just .leak()ing
-            //TODO: we are also prepending a newline here to avoid missing headings at the start of the file, but this messes with our offsets in Token
-            let mut tokenizer = Tokenizer::from_str(format!("\n{src}").leak(), file_path);
+            // Note: we are keeping the entirety of the source around until the end of the program
+            // we could copy the parts we need and deallocate the rest earlier, but since our program
+            // is short-lived anyway there is no real point in doing so
+            let mut tokenizer = Tokenizer::from_str(src.leak(), file_path);
             if let Some(heading_slug) = heading_slug {
                 tokenizer.scope_to_heading(heading_slug);
             }

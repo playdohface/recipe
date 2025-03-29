@@ -12,8 +12,11 @@ mod restore_dir;
 
 /// The main entry point
 pub fn run() -> anyhow::Result<()> {
-    //TODO read config, set up logging
+    //TODO read config
     let root_file_name = "Readme.md";
+
+    // Set up logging
+    let _stdout_subscriber = tracing_subscriber::fmt::init();
 
     // find a Recipe
     let root_path = find_closest_parent_containing(root_file_name, std::env::current_dir()?)

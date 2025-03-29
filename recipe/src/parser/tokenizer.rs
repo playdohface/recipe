@@ -6,7 +6,7 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_till, take_while},
     character::complete::{char, line_ending, space0, space1},
-    combinator::fail,
+    combinator::{fail, success},
     multi::many1_count,
     sequence::{delimited, preceded, terminated},
     IResult, InputLength, Parser, Slice,
@@ -99,7 +99,9 @@ fn any_token(inp: Span) -> IResult<Span, Token> {
 // Parse a markdown heading
 fn parse_heading(inp: Span) -> IResult<Span, Token> {
     let start = position(inp)?.1.location_offset();
-    let (inp, level) = preceded(terminated(line_ending, space0), many1_count(char('#')))(inp)?;
+    let (inp, _) = alt((at_start_of_input, line_ending))(inp)?;
+    let (inp, _) = take_till(|c: char| !c.is_whitespace())(inp)?;
+    let (inp, level) = many1_count(char('#'))(inp)?;
     let (inp, _) = take_till(|c: char| !c.is_whitespace())(inp)?;
     let (inp, text) = is_not("\r\n")(inp)?;
     let (inp, _) = line_ending(inp)?;
@@ -116,6 +118,14 @@ fn parse_heading(inp: Span) -> IResult<Span, Token> {
             inner: TokenType::Heading(heading),
         },
     ))
+}
+
+fn at_start_of_input(input: Span) -> IResult<Span, Span> {
+    if input.location_line() == 1 && input.get_column() == 1 {
+        Ok((input, "".into()))
+    } else {
+        fail(input)
+    }
 }
 
 /// Parse a raw codeblock (delimited by trtiple backticks)
@@ -237,8 +247,29 @@ mod tests {
             level: 4,
             text: "How To Bake a Cake",
         });
-        let (rest, parsed) = assert_parse_token_with_inner(&undertest, parse_heading, expected);
+        let (rest, _parsed) = assert_parse_token_with_inner(&undertest, parse_heading, expected);
         assert_eq!(*rest.fragment(), "and live to tell the tale");
+    }
+
+    #[test]
+    fn test_parse_heading_at_start_of_input() {
+        let undertest = " #### \t How To Bake a Cake\t  \r\nand live to tell the tale";
+        let expected = TokenType::Heading(Heading {
+            level: 4,
+            text: "How To Bake a Cake",
+        });
+        let (rest, _parsed) = assert_parse_token_with_inner(&undertest, parse_heading, expected);
+        assert_eq!(*rest.fragment(), "and live to tell the tale");
+    }
+
+    #[test]
+    fn test_at_beginning_of_file() {
+        let undertest = "\n #### \t How To Bake a Cake\t  \r\nand live to tell the tale".into();
+        let (rest, parsed) = at_start_of_input(undertest).unwrap();
+        assert_eq!(undertest, rest);
+        assert_eq!(parsed, "".into());
+        let (rest, _) = line_ending::<_, ()>(rest).unwrap();
+        assert!(at_start_of_input(rest).is_err());
     }
 
     #[test]

@@ -206,14 +206,9 @@ fn execute_set_directive(
             .ok_or(ExecutionError::InvalidPath)?;
 
         match set_directive.variable.last() {
-            Some(Selection::Index(i)) => {
-                if let Some(arr) = parent.as_array_mut() {
-                    if arr.len() <= *i {
-                        arr.extend(std::iter::repeat_n(Value::Null, i - arr.len()));
-                        arr.push(value);
-                    } else {
-                        arr[*i] = value;
-                    }
+            Some(Selection::Index(index)) => {
+                if let Some(list) = parent.as_array_mut() {
+                    insert_at_index_with_padding(list, *index, value);
                 } else {
                     return Err(ExecutionError::InvalidPath);
                 }
@@ -229,6 +224,16 @@ fn execute_set_directive(
         }
     }
     Ok(())
+}
+
+/// Insert a value at a given index in a list, padding with nulls if necessary
+fn insert_at_index_with_padding(arr: &mut Vec<Value>, index: usize, value: Value) {
+    if arr.len() <= index {
+        arr.extend(std::iter::repeat_n(Value::Null, index - arr.len()));
+        arr.push(value);
+    } else {
+        arr[index] = value;
+    }
 }
 
 #[cfg(test)]
@@ -259,7 +264,7 @@ mod tests {
             variable: SelectionPath(vec![Selection::Key("hello")]),
             value: Val::Literal(literal.clone()),
         };
-        let res = execute_set_directive(set_directive, &mut ctx);
+        let _res = execute_set_directive(set_directive, &mut ctx);
         assert_eq!(ctx.map(), json!({"hello" : literal}).as_object().unwrap());
 
         let literal = json!({
@@ -270,7 +275,7 @@ mod tests {
             variable: SelectionPath(vec![Selection::Key("hello")]),
             value: Val::Literal(literal.clone()),
         };
-        let res = execute_set_directive(set_directive, &mut ctx);
+        let _res = execute_set_directive(set_directive, &mut ctx);
         assert_eq!(ctx.map(), json!({"hello" : literal}).as_object().unwrap());
 
         let set_directive = SetDirective {
@@ -281,7 +286,7 @@ mod tests {
             ]),
             value: Val::Literal(json!("here")),
         };
-        let res = execute_set_directive(set_directive, &mut ctx);
+        let _res = execute_set_directive(set_directive, &mut ctx);
         assert_eq!(
             ctx.map(),
             json! ({
@@ -302,7 +307,7 @@ mod tests {
                 Selection::Index(4),
             ])),
         };
-        let res = execute_set_directive(set_directive, &mut ctx);
+        let _res = execute_set_directive(set_directive, &mut ctx);
         assert_eq!(
             ctx.map(),
             json! ({
@@ -354,7 +359,7 @@ mod tests {
             root: json!({}),
             executors: Executors::default(),
         };
-        let res = command.execute(&mut context);
+        let _res = command.execute(&mut context);
         dbg!(context);
     }
 }

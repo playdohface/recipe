@@ -1,8 +1,6 @@
 use std::path::Path;
 
 use insta::assert_yaml_snapshot;
-
-use recipe::parser::{Heading, Keyword, Link, TokenType};
 use recipe::parser::tokenizer::Tokenizer;
 
 #[test]

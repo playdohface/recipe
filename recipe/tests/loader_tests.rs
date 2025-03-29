@@ -5,11 +5,8 @@ use std::path::{Path, PathBuf};
 use insta::assert_yaml_snapshot;
 use tempfile::{tempdir, TempDir};
 
-use recipe::context::{Command, Commands};
 use recipe::loader::load;
-use recipe::parser::{
-    CodeBlock, Heading, Keyword, Selection, SelectionPath, SetDirective, TokenType, Tokens, Val,
-};
+use recipe::parser::Tokens;
 
 #[test]
 fn load_simple_recipe() {
