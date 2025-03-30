@@ -5,10 +5,10 @@ use convert_case::{Case, Casing};
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_till, take_while},
-    character::complete::{char, line_ending, space0, space1},
-    combinator::{fail, success},
+    character::complete::{char, line_ending, space1},
+    combinator::fail,
     multi::many1_count,
-    sequence::{delimited, preceded, terminated},
+    sequence::{delimited, terminated},
     IResult, InputLength, Parser, Slice,
 };
 use nom_locate::position;

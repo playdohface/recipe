@@ -86,6 +86,11 @@ impl<'a> SelectionPath<'a> {
         pointer
     }
 
+    /// Whether or not this path has segments
+    pub fn is_direct(&self) -> bool {
+        self.0.len() == 1
+    }
+
     /// The last element
     pub fn last(&self) -> Option<&Selection> {
         self.0.last()
