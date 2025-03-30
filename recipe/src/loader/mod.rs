@@ -3,7 +3,8 @@ use std::path::Path;
 use convert_case::{Case, Casing};
 use itertools::Itertools;
 
-use crate::context::{Command, Commands};
+use crate::context::command::Command;
+use crate::context::Commands;
 use crate::parser::parse_to_directive_inner;
 use crate::parser::{TokenType, Tokens};
 

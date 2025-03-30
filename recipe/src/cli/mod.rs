@@ -5,7 +5,8 @@ use anyhow::anyhow;
 use convert_case::{Case, Casing};
 
 use crate::cli::restore_dir::RestoreDir;
-use crate::context::{Command, Commands, Context};
+use crate::context::command::Command;
+use crate::context::{Commands, Context};
 use crate::loader::load;
 
 mod restore_dir;

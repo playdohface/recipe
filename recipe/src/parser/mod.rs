@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 use error::ParseError;
 use tokenizer::Tokenizer;
 
-use crate::context::Command;
+use crate::context::command::code_block::CodeBlock;
+use crate::context::command::set_directive::SetDirective;
+use crate::context::command::Command;
+use crate::context::selection::{Selection, SelectionPath, Val};
 
 mod error;
 pub mod tokenizer;
@@ -29,15 +32,6 @@ pub type Span<'a> = LocatedSpan<&'a str>;
 pub struct Heading<'a> {
     pub level: usize,
     pub text: &'a str,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CodeBlock<'a> {
-    pub executor: Option<&'a str>,
-    pub name: Option<&'a str>,
-    pub type_hint: Option<&'a str>,
-    pub annotations: Vec<&'a str>,
-    pub code: &'a str,
 }
 
 impl<'a> TryFrom<Token<'a>> for CodeBlock<'a> {
@@ -59,59 +53,6 @@ pub struct Link<'a> {
     pub path: &'a str,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Selection<'a> {
-    Index(usize),
-    Key(&'a str),
-}
-impl<'a> Selection<'a> {
-    fn as_string(&self) -> String {
-        match self {
-            Selection::Index(i) => i.to_string(),
-            Selection::Key(k) => k.to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SelectionPath<'a>(#[serde(borrow)] pub Vec<Selection<'a>>);
-impl<'a> SelectionPath<'a> {
-    /// the selection as a JSON-Pointer per [RFC6901](https://datatracker.ietf.org/doc/html/rfc6901)
-    pub fn json_pointer(&self) -> String {
-        let mut pointer = String::new();
-        for s in self.0.iter() {
-            // both Tilde ~ and Slash / are disallowed in names so we can skip escaping
-            pointer = format!("{pointer}/{}", s.as_string())
-        }
-        pointer
-    }
-
-    /// Whether or not this path has segments
-    pub fn is_direct(&self) -> bool {
-        self.0.len() == 1
-    }
-
-    /// The last element
-    pub fn last(&self) -> Option<&Selection> {
-        self.0.last()
-    }
-    /// The selection up until the second-to-last element
-    pub fn parent(&self) -> Option<SelectionPath> {
-        if self.0.len() > 1 {
-            let mut parent = self.0.clone();
-            parent.pop();
-            Some(SelectionPath(parent))
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Val<'a> {
-    ContextRef(#[serde(borrow)] SelectionPath<'a>),
-    Literal(serde_json::Value),
-}
 impl<'a> TryFrom<&TokenType<'a>> for Val<'a> {
     type Error = ParseError<'a>;
 
@@ -133,13 +74,6 @@ impl<'a> TryFrom<&TokenType<'a>> for Val<'a> {
             _ => Err(ParseError::InvalidTokenTypeForValue(value.clone())),
         }
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SetDirective<'a> {
-    #[serde(borrow)]
-    pub variable: SelectionPath<'a>,
-    pub value: Val<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -362,6 +296,8 @@ fn valid_name(inp: &str) -> IResult<&str, &str> {
 
 #[cfg(test)]
 mod tests {
+    use crate::context::command::code_block::CodeBlock;
+
     use super::*;
 
     impl<'a> TokenType<'a> {
